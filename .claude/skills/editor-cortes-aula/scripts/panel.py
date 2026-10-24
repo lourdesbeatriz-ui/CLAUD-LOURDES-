@@ -111,10 +111,16 @@ def label(text, W, out, th, kicker=None):
     return out
 
 
-def base_panel(W, PH, out, th, handle=None):
-    """Fundo padrão do painel (quando nenhum take/cartão está ativo)."""
+def base_panel(W, PH, out, th, handle=None, minimal=False):
+    """Fundo padrão do painel. minimal=True (cartões animados): só o creme e o @ discreto no rodapé."""
     im = Image.new("RGBA", (W, PH), rgb(th["creme"]))
     d = ImageDraw.Draw(im)
+    if minimal:
+        if handle:
+            d.text((W // 2, PH - 70), handle, font=font(th["text_font"], 24), fill=rgb(th["caramelo"], 200),
+                   anchor="mm")
+        im.save(out)
+        return out
     ornament(d, W // 2, PH // 2 - 20, th, 80)
     if handle:
         d.text((W // 2, PH // 2 + 30), handle, font=font(th["text_font"], 30), fill=rgb(th["caramelo"]), anchor="mm")

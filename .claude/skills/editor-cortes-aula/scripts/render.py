@@ -147,7 +147,8 @@ def panel_graph(edl, total, fps, W, H, tmpdir, first_idx, base_dir):
     inputs, fc = [], []
     idx = first_idx
     fc.append(f"[vbase]pad={W}:{H}:0:0:color={th['creme']}[p0]")
-    base = P.base_panel(W, PH, os.path.join(tmpdir, "panel_base.png"), th, cfg.get("handle"))
+    base = P.base_panel(W, PH, os.path.join(tmpdir, "panel_base.png"), th, cfg.get("handle"),
+                        minimal=edl.get("panel_anim", True))
     inputs += ["-loop", "1", "-framerate", fps, "-t", f"{total:.3f}", "-i", base]
     fc.append(f"[{idx}:v]format=rgba[pb];[p0][pb]overlay=0:{top}:shortest=1[p1]")
     idx += 1
@@ -159,6 +160,9 @@ def panel_graph(edl, total, fps, W, H, tmpdir, first_idx, base_dir):
         if d <= 0.2:
             continue
         kind = b.get("type", "texto")
+        anim = edl.get("panel_anim", True)  # cartões/rótulos animados vêm no .ass (panel_ass.py)
+        if kind == "texto" and anim:
+            continue
         if kind == "texto":
             png = P.text_card(b, W, PH, os.path.join(tmpdir, f"card{k}.png"), th)
             inputs += ["-loop", "1", "-framerate", fps, "-t", f"{d:.3f}", "-i", png]
@@ -192,7 +196,7 @@ def panel_graph(edl, total, fps, W, H, tmpdir, first_idx, base_dir):
                 chain = (f"[{idx}:v]fps={fps},{hdr}{cr}scale={W}:{PH}:force_original_aspect_ratio=increase:"
                          f"flags=lanczos,crop={W}:{PH},{zoom_f}eq=saturation={b.get('saturation', 0.92)},format=rgba")
             idx += 1
-            if b.get("label"):
+            if b.get("label") and not anim:
                 lp = P.label(b["label"], W, os.path.join(tmpdir, f"label{k}.png"), th, b.get("kicker"))
                 inputs += ["-loop", "1", "-framerate", fps, "-t", f"{d:.3f}", "-i", lp]
                 fc.append(f"{chain}[b{k}raw]")

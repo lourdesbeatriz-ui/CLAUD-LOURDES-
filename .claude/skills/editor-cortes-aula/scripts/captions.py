@@ -14,6 +14,8 @@ import os
 import re
 
 from common import die, load_json, norm_word, save_json
+import panel_ass
+import panel as P
 
 WEAK_END = {"de", "do", "da", "dos", "das", "o", "a", "os", "as", "um", "uma", "e", "ou", "que", "em", "no",
             "na", "nos", "nas", "para", "pra", "com", "por", "pelo", "pela", "se", "ao", "aos", "mas", "nem",
@@ -127,6 +129,7 @@ def build(edl, words, out_ass):
     bold = -1 if st["bold"] else 0
     shadow = ass_color("#000000", 0x80)
     mv = H - int(st["caption_y"])
+    panel_styles = "\n".join(panel_ass.styles(P.theme(edl))) + "\n" if split and edl.get("panel_anim", True) else ""
     header = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {W}
@@ -141,6 +144,7 @@ Style: Caption,{st['font']},{st['font_size']},{white},{white},{outline},{shadow}
 Style: Hook,{st['font']},{st['hook_font_size']},{white},{white},{outline},{shadow},-1,0,0,0,100,100,0,0,1,6,3,8,{st['margin_l']},{st['margin_r']},{st['hook_y']},1
 Style: Overlay,{st['font']},{int(st['font_size'] * 0.72)},{ass_color('#111111')},{white},{accent},{ass_color('#000000', 0xFF)},-1,0,0,0,100,100,0,0,3,16,0,8,{st['margin_l']},{st['margin_r']},{st['overlay_y']},1
 
+{panel_styles}
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
@@ -182,6 +186,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         d = float(edl.get("hook_duration", 3.0))
         ev.insert(0, f"Dialogue: 1,{ass_time(0)},{ass_time(min(d, total))},Hook,,0,0,0,,"
                      f"{{\\fad(120,250)}}{esc(edl['hook_text'])}")
+    if split and edl.get("panel_anim", True):
+        top = int((edl.get("split") or {}).get("top_h", 1020))
+        ev.extend(panel_ass.events(edl, total, top))
     for o in edl.get("overlays", []):
         ev.append(f"Dialogue: 2,{ass_time(o['start'])},{ass_time(min(o['end'], total))},Overlay,,0,0,0,,"
                   f"{{\\fad(180,180)}}{esc(o['text'])}")

@@ -177,7 +177,8 @@ def panel_graph(edl, total, fps, W, H, tmpdir, first_idx, base_dir):
                 zw, zh = int(W * z) // 2 * 2, int(PH * z) // 2 * 2
                 # Ken Burns lento: leve deslocamento ao longo do take
                 chain = (f"[{idx}:v]scale={zw}:{zh}:force_original_aspect_ratio=increase:flags=lanczos,"
-                         f"crop={zw}:{zh},crop={W}:{PH}:x='(iw-{W})*t/{d:.3f}':y='(ih-{PH})/2',format=rgba")
+                         f"crop={zw}:{zh},crop={W}:{PH}:x='(iw-{W})*t/{d:.3f}':y='(ih-{PH})/2',"
+                         f"eq=saturation={b.get('saturation', 0.9)},format=rgba")
             else:  # video
                 ss = float(b.get("source_start", 0))
                 inputs += ["-ss", f"{ss:.3f}", "-t", f"{d:.3f}", "-i", path]

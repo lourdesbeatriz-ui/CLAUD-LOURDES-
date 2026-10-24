@@ -32,6 +32,11 @@ def main():
     ap.add_argument("edl")
     ap.add_argument("--step", type=float, default=0.5)
     ap.add_argument("--face-y", type=float, default=0.42)
+    ap.add_argument("--smooth", type=float, default=2.5, help="janela de suavização da trilha (s)")
+    ap.add_argument("--head-shift", type=float, default=0.2,
+                    help="desloca o centro p/ a nuca, em frações da largura do rosto (+ = esquerda). "
+                         "Use negativo se a pessoa olhar para a esquerda do quadro.")
+    ap.add_argument("--static", action="store_true", help="sem acompanhamento: um centro fixo por trecho")
     a = ap.parse_args()
     try:
         import cv2
@@ -53,7 +58,7 @@ def main():
     for seg in edl["segments"]:
         for p in seg.get("parts", []):
             imgs, w, h = frames(src, p["start"], p["end"], a.step)
-            xs, ys = [], []
+            xs, ys, track_x = [], [], []
             for g in imgs:
                 found = list(front.detectMultiScale(g, 1.1, 5, minSize=(w // 12, w // 12)))
                 if not found:
@@ -63,8 +68,27 @@ def main():
                                  prof.detectMultiScale(cv2.flip(g, 1), 1.1, 4, minSize=(w // 12, w // 12))]
                 if found:
                     x, y, fw, fh = max(found, key=lambda r: r[2] * r[3])
-                    xs.append((x + fw / 2) / w)
+                    hx = (x + fw / 2 - a.head_shift * fw) / w  # centro da cabeça (inclui cabelo/nuca)
+                    xs.append(hx)
                     ys.append((y + fh / 2) / h)
+                    track_x.append(hx)
+                else:
+                    track_x.append(np.nan)
+            # trilha suave do rosto ao longo do trecho (auto-reframe), em tempo relativo ao trecho
+            n = len(imgs)
+            if not a.static and n >= 3 and len(xs) >= max(2, n // 3):
+                tx = np.full(n, np.nan)
+                k = 0
+                tx = np.array(track_x)
+                ok = ~np.isnan(tx)
+                tx = np.interp(np.arange(n), np.flatnonzero(ok), tx[ok])
+                win = max(1, int(round(a.smooth / a.step)))
+                ker = np.ones(win) / win
+                pad = np.pad(tx, (win // 2, win - 1 - win // 2), mode="edge")
+                sm = np.convolve(pad, ker, mode="valid")
+                p["track"] = [[round(i * a.step, 3), round(float(v), 4)] for i, v in enumerate(sm)]
+            else:
+                p.pop("track", None)
             if xs:
                 fx, fy = float(np.median(xs)), float(np.median(ys))
                 cx = fx

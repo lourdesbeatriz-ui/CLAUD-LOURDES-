@@ -157,9 +157,21 @@ def panel_graph(edl, total, fps, W, H, tmpdir, first_idx, base_dir):
                          f"crop={zw}:{zh},crop={W}:{PH}:x='(iw-{W})*t/{d:.3f}':y='(ih-{PH})/2',format=rgba")
             else:  # video
                 ss = float(b.get("source_start", 0))
-                inputs += ["-stream_loop", "-1", "-ss", f"{ss:.3f}", "-t", f"{d:.3f}", "-i", path]
-                chain = (f"[{idx}:v]fps={fps},scale={W}:{PH}:force_original_aspect_ratio=increase:flags=lanczos,"
-                         f"crop={W}:{PH},eq=saturation={b.get('saturation', 0.92)},format=rgba")
+                inputs += ["-ss", f"{ss:.3f}", "-t", f"{d:.3f}", "-i", path]
+                # take pode ser um close recortado da própria gravação: "crop": [x, y, w, h] em frações
+                cr = ""
+                if b.get("crop"):
+                    x, y, w, h = (float(c) for c in b["crop"])
+                    cr = f"crop=trunc(iw*{w}/2)*2:trunc(ih*{h}/2)*2:trunc(iw*{x}):trunc(ih*{y}),"
+                hdr = hdr_to_sdr(probe(path))
+                drift = float(b.get("zoom", 1.0))  # aproximação lenta opcional (1.0 = parado)
+                zoom_f = ""
+                if drift > 1.0:
+                    zw, zh = int(W * drift) // 2 * 2, int(PH * drift) // 2 * 2
+                    zoom_f = (f"scale={zw}:{zh}:flags=lanczos,"
+                              f"crop={W}:{PH}:x='(iw-{W})/2*(1-t/{d:.3f})':y='(ih-{PH})/2*(1-t/{d:.3f})',")
+                chain = (f"[{idx}:v]fps={fps},{hdr}{cr}scale={W}:{PH}:force_original_aspect_ratio=increase:"
+                         f"flags=lanczos,crop={W}:{PH},{zoom_f}eq=saturation={b.get('saturation', 0.92)},format=rgba")
             idx += 1
             if b.get("label"):
                 lp = P.label(b["label"], W, os.path.join(tmpdir, f"label{k}.png"), th, b.get("kicker"))

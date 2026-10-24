@@ -10,6 +10,7 @@ Cada segmento ganha "parts": [{"start", "end", "words": [índices]}] — os trec
 """
 import argparse
 import copy
+import subprocess
 
 from common import load_json, norm_word, save_json, tc
 
@@ -113,6 +114,23 @@ def tighten(edl, words, max_pause, pad, remove_fillers):
     return out_segments, report
 
 
+def snap_to_breath(src, t, back=0.45, fwd=0.05):
+    """Ajusta um ponto de corte para o instante de menor energia (respiro) logo antes de t.
+    Os tempos por palavra da transcrição são estimados; sem isso a 1ª sílaba pode ser cortada."""
+    import numpy as np
+    a = max(0.0, t - back)
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{a:.3f}", "-t", f"{back + fwd:.3f}", "-i", src,
+                          "-vn", "-ac", "1", "-ar", "16000", "-f", "f32le", "-"], stdout=subprocess.PIPE).stdout
+    x = np.frombuffer(raw, np.float32)
+    hop = 160
+    n = len(x) // hop
+    if n < 5:
+        return t
+    r = np.sqrt((x[:n * hop].reshape(n, hop) ** 2).mean(1) + 1e-12)
+    r = np.convolve(r, np.ones(3) / 3, mode="same")
+    return round(a + int(np.argmin(r)) * hop / 16000, 3)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("edl")
@@ -134,6 +152,17 @@ def main():
     fillers = False if a.no_fillers else cfg.get("remove_fillers", True)
 
     segs, report = tighten(edl, words, max_pause, pad, fillers)
+    # início de cada trecho no respiro real do áudio (evita cortar a 1ª sílaba)
+    try:
+        from common import resolve_source
+        src = resolve_source(edl, a.edl)
+        for sg in segs:
+            for p in sg["parts"]:
+                if p["words"]:
+                    p["start"] = min(p["start"], snap_to_breath(src, words[p["words"][0]]["start"]))
+            sg["start"] = sg["parts"][0]["start"]
+    except SystemExit:
+        print("AVISO: fonte não encontrada — inícios não ajustados ao áudio.")
     out = dict(edl)
     out["segments"] = segs
     out["tightened"] = {"max_pause": max_pause, "pad": pad, "remove_fillers": fillers}

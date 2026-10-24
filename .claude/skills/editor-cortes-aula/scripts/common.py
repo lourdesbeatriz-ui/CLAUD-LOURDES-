@@ -79,7 +79,9 @@ def probe(path):
         info["video"] = {"width": w, "height": h, "rotation": rot, "codec": v.get("codec_name"),
                          "pix_fmt": v.get("pix_fmt"), "fps": float(fps), "fps_str": fr,
                          "r_frame_rate": v.get("r_frame_rate"), "profile": v.get("profile"),
-                         "bit_rate": int(v.get("bit_rate", 0) or 0)}
+                         "bit_rate": int(v.get("bit_rate", 0) or 0),
+                         "color_transfer": v.get("color_transfer"), "color_primaries": v.get("color_primaries"),
+                         "hdr": v.get("color_transfer") in ("arib-std-b67", "smpte2084")}
     if a:
         info["audio"] = {"codec": a.get("codec_name"), "sample_rate": int(a.get("sample_rate", 0) or 0),
                          "channels": a.get("channels"), "bit_rate": int(a.get("bit_rate", 0) or 0)}

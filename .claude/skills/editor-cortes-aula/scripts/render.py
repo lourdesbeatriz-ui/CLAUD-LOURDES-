@@ -69,6 +69,20 @@ def geometry(edl, info, zoom, W, H):
     return f"crop={cw}:{ch}:{x}:{y},scale={W}:{H}:flags=lanczos"
 
 
+def hdr_to_sdr(info):
+    """iPhone grava em HDR HLG (BT.2020). O HLG já é compatível com telas SDR; convertemos só as
+    primárias/matriz para BT.709 — testado: tons de pele naturais. (Tonemap Hable/Mobius
+    deixava a pele alaranjada.) Para PQ (HDR10), aplica tonemap leve."""
+    v = info["video"]
+    if v.get("color_transfer") == "arib-std-b67":
+        return ("colorspace=all=bt709:iprimaries=bt2020:itrc=bt2020-10:ispace=bt2020ncl:"
+                "irange=tv:format=yuv420p,")
+    if v.get("color_transfer") == "smpte2084":
+        return ("zscale=tin=smpte2084:pin=bt2020:min=bt2020nc:t=linear:npl=203,format=gbrpf32le,"
+                "zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p,")
+    return ""
+
+
 def video_post(edl):
     vp = VIDEO_PRESETS.get(edl.get("video_preset", "padrao"), VIDEO_PRESETS["padrao"])
     adj = edl.get("video_adjust") or {}
@@ -174,7 +188,7 @@ def build_graph(edl, info, src, subs, fps, W, H, with_video, loudnorm, tmpdir=No
         fc.append(f"[{k}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,"
                   f"asetpts=PTS-STARTPTS,afade=t=in:d={fade:.3f},afade=t=out:st={d - fade:.3f}:d={fade:.3f}[a{k}]")
         if with_video:
-            fc.append(f"[{k}:v]setpts=PTS-STARTPTS,{geometry(edl, info, zoom, W, VH)},"
+            fc.append(f"[{k}:v]setpts=PTS-STARTPTS,fps={fps},{hdr_to_sdr(info)}{geometry(edl, info, zoom, W, VH)},"
                       f"fps={fps},setsar=1,format=yuv420p,trim=duration={d:.3f}[v{k}]")
     n = len(parts)
     if with_video:

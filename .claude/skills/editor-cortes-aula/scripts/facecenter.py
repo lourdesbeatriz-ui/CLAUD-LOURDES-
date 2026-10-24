@@ -7,7 +7,7 @@ Uso:
 
 --face-y: altura desejada do rosto dentro do recorte (0 = topo, 1 = base). 0.42 deixa respiro
 acima da cabeça e espaço para a legenda embaixo.
-Requer opencv-python-headless (pip install opencv-python-headless).
+Requer OpenCV 4.x com Haar cascades: pip install "opencv-python-headless<5".
 """
 import argparse
 import subprocess
@@ -36,7 +36,7 @@ def main():
     try:
         import cv2
     except ImportError:
-        die("instale: pip install opencv-python-headless")
+        die("instale: pip install \"opencv-python-headless<5\"")
     edl = load_json(a.edl)
     src = resolve_source(edl, a.edl)
     info = probe(src)["video"]

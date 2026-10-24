@@ -1,5 +1,17 @@
 # Identidade visual padrão da série (preferências da usuária)
 
+## Regras aprendidas com o feedback (OBRIGATÓRIAS)
+1. **Na parte de baixo NUNCA use a professora** — nada de recortes do corpo, mãos, roupa ou rosto dela.
+   O painel tem só cartões de texto centralizados e takes de objetos/ambiente centralizados
+   (ex.: o troféu de xadrez da estante), ou imagens de banco quando disponíveis.
+2. **Ela sempre centralizada na tela de cima**: rode `scripts/facecenter.py` no EDL final e use
+   `base_zoom` ≈ 1.15–1.2 (fonte 4K permite sem perder nitidez).
+3. **Frases fortes, não frases à toa**: escolha trechos com afirmações de impacto (quebra de crença,
+   frase de efeito, conclusão), não frases de transição ou exemplos soltos.
+4. **Pouco picote**: prefira blocos contínuos de fala (1–3 segmentos longos), removendo só pausas
+   longas (`max_pause` ≈ 0.65, `pad` 0.15). Nada de montar frase com pedacinhos.
+5. Cada elemento do painel deve estar **centralizado** (texto e objeto no centro do quadro).
+
 Aplique este padrão a TODOS os cortes, salvo pedido diferente. Ele foi aprovado pela usuária.
 
 ## Formato: duas telas (`"layout": "split"`)
@@ -17,7 +29,7 @@ Aplique este padrão a TODOS os cortes, salvo pedido diferente. Ele foi aprovado
 └──────────────────────────┘ y=1920
 ```
 
-- A professora fica **sempre em cima**. O painel de baixo **não é só texto**: mescle cartões de insight com **imagens e takes de vídeo** que ilustrem o que ela diz (ex.: contrato sendo assinado, fachada de banco/tribunal, calculadora, documentos, gráfico de juros).
+- A professora fica **sempre em cima e só em cima**. O painel de baixo mescla cartões de insight com **imagens e takes de objetos/ambiente** que ilustrem o que ela diz (ex.: troféu de xadrez, contrato, fachada de banco/tribunal, calculadora, gráfico de juros) — **nunca ela**.
 - Ritmo do painel: troque de elemento a cada ~4–7 s; comece com o cartão do insight (funciona como hook visual); alterne texto → take → imagem; volte a um cartão na conclusão.
 - Rótulo discreto opcional sobre imagens/takes (`label`, `kicker`) — faixa creme translúcida, texto bordô.
 

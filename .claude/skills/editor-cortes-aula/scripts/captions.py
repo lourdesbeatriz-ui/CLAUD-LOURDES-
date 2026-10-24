@@ -19,7 +19,12 @@ WEAK_END = {"de", "do", "da", "dos", "das", "o", "a", "os", "as", "um", "uma", "
             "na", "nos", "nas", "para", "pra", "com", "por", "pelo", "pela", "se", "ao", "aos", "mas", "nem",
             "não", "te", "me", "lhe", "seu", "sua", "meu", "minha", "the", "of", "to"}
 
-WEAK_NORM = {norm_word(x) for x in WEAK_END}
+def weak_key(w):
+    """minúsculas sem pontuação, mantendo acentos ("é" verbo ≠ "e" conjunção)."""
+    return re.sub(r"[^\w%$]", "", w.lower())
+
+
+WEAK_NORM = {weak_key(x) for x in WEAK_END}
 
 DEFAULT_STYLE = {"font": "Inter", "font_size": 70, "accent": "#FFC94A", "text_color": "#FFFFFF",
                  "outline_color": "#000000", "caption_y": 1330, "max_chars": 22, "mode": "ativo",
@@ -95,7 +100,7 @@ def group_cues(tw, max_chars, max_dur=2.5, gap_break=0.25):
                 # não terminar bloco com palavra fraca: leva-a para o próximo
                 moved = []
                 while (not ends_sentence and len(cur) > 1 and len(moved) < 2
-                       and norm_word(cur[-1]["word"]) in WEAK_NORM
+                       and weak_key(cur[-1]["word"]) in WEAK_NORM
                        and not re.search(r"[.,!?:;]$", cur[-1]["word"])):
                     moved.insert(0, cur.pop())
                 flush()

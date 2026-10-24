@@ -13,7 +13,8 @@ import copy
 
 from common import load_json, norm_word, save_json, tc
 
-FILLERS = {"ahn", "ah", "aham", "ha", "han", "hum", "hmm", "hm", "uh", "um", "uhm", "eh", "ee", "eee", "ehh", "ããã", "aa", "aaa"}
+# atenção: "um"/"uma" são artigos em português — nunca tratar como hesitação
+FILLERS = {"ahn", "aham", "han", "hum", "hmm", "hm", "uhm", "eh", "ee", "eee", "ehh", "ããã", "aa", "aaa"}
 MIN_PART = 0.30
 
 

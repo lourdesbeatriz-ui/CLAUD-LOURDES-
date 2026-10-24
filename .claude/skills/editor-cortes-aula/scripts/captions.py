@@ -17,7 +17,9 @@ from common import die, load_json, norm_word, save_json
 
 WEAK_END = {"de", "do", "da", "dos", "das", "o", "a", "os", "as", "um", "uma", "e", "ou", "que", "em", "no",
             "na", "nos", "nas", "para", "pra", "com", "por", "pelo", "pela", "se", "ao", "aos", "mas", "nem",
-            "the", "of", "to"}
+            "não", "te", "me", "lhe", "seu", "sua", "meu", "minha", "the", "of", "to"}
+
+WEAK_NORM = {norm_word(x) for x in WEAK_END}
 
 DEFAULT_STYLE = {"font": "Inter", "font_size": 70, "accent": "#FFC94A", "text_color": "#FFFFFF",
                  "outline_color": "#000000", "caption_y": 1330, "max_chars": 22, "mode": "ativo",
@@ -86,13 +88,16 @@ def group_cues(tw, max_chars, max_dur=2.5, gap_break=0.25):
             text_len = len(" ".join(x["word"] for x in cur)) + 1 + len(w["word"])
             prev = cur[-1]
             ends_sentence = re.search(r"[.!?:;…]$", prev["word"]) is not None
-            if (text_len > max_chars or w["start"] - prev["end"] > gap_break or ends_sentence
+            # tolera até 6 caracteres a mais para não deixar a última palavra da frase sozinha
+            closes = re.search(r"[.!?…]$", w["word"]) is not None and text_len <= max_chars + 6
+            if ((text_len > max_chars and not closes) or w["start"] - prev["end"] > gap_break or ends_sentence
                     or w["end"] - cur[0]["start"] > max_dur):
                 # não terminar bloco com palavra fraca: leva-a para o próximo
                 moved = []
-                if text_len > max_chars and len(cur) > 1 and norm_word(cur[-1]["word"]) in WEAK_END \
-                        and not re.search(r"[.,!?:;]$", cur[-1]["word"]):
-                    moved = [cur.pop()]
+                while (not ends_sentence and len(cur) > 1 and len(moved) < 2
+                       and norm_word(cur[-1]["word"]) in WEAK_NORM
+                       and not re.search(r"[.,!?:;]$", cur[-1]["word"])):
+                    moved.insert(0, cur.pop())
                 flush()
                 cur.extend(moved)
         cur.append(w)

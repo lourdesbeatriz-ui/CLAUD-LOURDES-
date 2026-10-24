@@ -286,6 +286,62 @@ def build_graph(edl, info, src, subs, fps, W, H, with_video, loudnorm, tmpdir=No
     return inputs, ";".join(fc), total
 
 
+def make_proxy(edl, src, info, tmpdir, fps, W):
+    """Fontes pesadas (4K/HEVC/HDR do iPhone): extrai cada trecho, um por vez, para um intermediário
+    1080p SDR e concatena na ordem final. Evita estouro de memória (vários decodificadores 4K em
+    paralelo) e acelera prévias e render final. Os takes do painel também viram intermediários."""
+    import copy
+    parts = parts_of(edl)
+    v = info["video"]
+    pw = W if v["width"] <= v["height"] else int(W * v["width"] / v["height"]) // 2 * 2
+    ph = int(pw * v["height"] / v["width"]) // 2 * 2
+    files, new_parts, off = [], [], 0.0
+    for k, (s0, e0, zoom) in enumerate(parts):
+        out = os.path.join(tmpdir, f"px{k:02d}.mkv")
+        run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{s0:.3f}", "-t", f"{e0 - s0:.3f}",
+             "-i", src, "-map", "0:v:0", "-map", "0:a:0",
+             "-vf", f"fps={fps},{hdr_to_sdr(info)}scale={pw}:{ph}:flags=lanczos,format=yuv420p",
+             "-c:v", "libx264", "-preset", "veryfast", "-crf", "10", "-c:a", "pcm_s16le", "-ar", "48000", out])
+        files.append(out)
+        new_parts.append({"start": off, "end": off + (e0 - s0), "zoom": zoom})
+        off += e0 - s0
+    lst = os.path.join(tmpdir, "px.txt")
+    with open(lst, "w") as f:
+        f.writelines(f"file '{x}'\n" for x in files)
+    mezz = os.path.join(tmpdir, "mezz.mkv")
+    run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", lst,
+         "-c", "copy", mezz])
+    for x in files:
+        os.remove(x)
+    e2 = copy.deepcopy(edl)
+    e2["segments"] = [{"start": p["start"], "end": p["end"], "zoom": p["zoom"],
+                       "parts": [{"start": p["start"] + 0.0005, "end": p["end"] - 0.0005, "words": []}]}
+                      for p in new_parts]
+    # takes do painel
+    PH = H_PANEL = None
+    for k, b in enumerate(e2.get("panel", [])):
+        if b.get("type") != "video":
+            continue
+        top = split_top(e2, 1920)
+        PH = 1920 - top
+        d = float(b["end"]) - float(b["start"])
+        tin = b["path"]
+        tinfo = probe(tin)
+        cr = ""
+        if b.get("crop"):
+            x, y, w, h = (float(c) for c in b["crop"])
+            cr = f"crop=trunc(iw*{w}/2)*2:trunc(ih*{h}/2)*2:trunc(iw*{x}):trunc(ih*{y}),"
+        out = os.path.join(tmpdir, f"take{k:02d}.mkv")
+        run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{float(b.get('source_start', 0)):.3f}",
+             "-t", f"{d + 0.5:.3f}", "-i", tin, "-map", "0:v:0", "-an",
+             "-vf", f"fps={fps},{hdr_to_sdr(tinfo)}{cr}scale={W}:{PH}:force_original_aspect_ratio=increase:"
+                    f"flags=lanczos,crop={W}:{PH},format=yuv420p",
+             "-c:v", "libx264", "-preset", "veryfast", "-crf", "10", out])
+        b["path"], b["source_start"] = out, 0
+        b.pop("crop", None)
+    return e2, mezz
+
+
 def measure_loudness(edl, info, src, fps, W, H):
     probe_ln = f"loudnorm=I={TARGET_I}:TP={TARGET_TP}:LRA={TARGET_LRA}:print_format=json"
     inputs, fc, _ = build_graph(edl, info, src, None, fps, W, H, False, probe_ln)
@@ -305,6 +361,8 @@ def main():
     ap.add_argument("--size", default="1080x1920")
     ap.add_argument("--preview", action="store_true")
     ap.add_argument("--crf", type=int)
+    ap.add_argument("--proxy", action="store_true", help="força intermediários 1080p")
+    ap.add_argument("--no-proxy", action="store_true", help="nunca usa intermediários")
     a = ap.parse_args()
     require("ffmpeg", "ffprobe")
 
@@ -316,12 +374,17 @@ def main():
     W, H = (int(x) for x in a.size.lower().split("x"))
     fps = output_fps(info, edl.get("fps"))
 
+
+    tmpdir = tempfile.mkdtemp(prefix="corte_", dir=os.environ.get("CORTE_TMP"))
+    v = info["video"]
+    if a.proxy or (not a.no_proxy and (v["width"] * v["height"] > 2_500_000 or v.get("hdr"))):
+        print("Gerando intermediários 1080p (fonte 4K/HDR)...")
+        edl, src = make_proxy(edl, src, info, tmpdir, fps, W)
+        info = probe(src)
     m = measure_loudness(edl, info, src, fps, W, H)
     ln = (f"loudnorm=I={TARGET_I}:TP={TARGET_TP}:LRA={TARGET_LRA}:measured_I={m['input_i']}:"
           f"measured_TP={m['input_tp']}:measured_LRA={m['input_lra']}:measured_thresh={m['input_thresh']}:"
           f"offset={m['target_offset']}:linear=true,aresample=48000")
-
-    tmpdir = tempfile.mkdtemp(prefix="corte_")
     subs = None
     if a.subs:
         if not os.path.exists(a.subs):

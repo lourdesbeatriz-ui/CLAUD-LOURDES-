@@ -38,18 +38,21 @@ def parts_of(edl):
     for seg in edl["segments"]:
         for p in seg.get("parts") or [{"start": seg["start"], "end": seg["end"]}]:
             if p["end"] - p["start"] > 0.02:
-                out.append((p["start"], p["end"], float(seg.get("zoom", 1.0))))
+                out.append((p["start"], p["end"], float(seg.get("zoom", 1.0)),
+                            p.get("crop_x", seg.get("crop_x")), p.get("crop_y", seg.get("crop_y"))))
     if not out:
         die("EDL sem trechos.")
     return out
 
 
-def geometry(edl, info, zoom, W, H):
+def geometry(edl, info, zoom, W, H, cx=None, cy=None):
     """Filtro de enquadramento de um trecho -> WxH."""
     sw, sh = info["video"]["width"], info["video"]["height"]
-    zoom = min(max(zoom, 1.0), 1.15)
+    # base_zoom: aproximação fixa para centralizar o rosto (fonte 4K permite sem perder nitidez)
+    zoom = min(max(zoom * float(edl.get("base_zoom", 1.0)), 1.0), 1.5)
     layout = edl.get("layout", "crop")
-    cx, cy = float(edl.get("crop_x", 0.5)), float(edl.get("crop_y", 0.5))
+    cx = float(cx if cx is not None else edl.get("crop_x", 0.5))
+    cy = float(cy if cy is not None else edl.get("crop_y", 0.5))
     target = W / H
     if layout == "blur":
         fg_w, fg_h = sw / zoom, sh / zoom
@@ -216,14 +219,14 @@ def build_graph(edl, info, src, subs, fps, W, H, with_video, loudnorm, tmpdir=No
     parts = parts_of(edl)
     VH = split_top(edl, H)
     inputs, fc = [], []
-    for k, (s, e, zoom) in enumerate(parts):
+    for k, (s, e, zoom, pcx, pcy) in enumerate(parts):
         inputs += ["-ss", f"{s:.3f}", "-t", f"{e - s:.3f}", "-i", src]
         d = e - s
         fade = min(0.01, d / 4)
         fc.append(f"[{k}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,"
                   f"asetpts=PTS-STARTPTS,afade=t=in:d={fade:.3f},afade=t=out:st={d - fade:.3f}:d={fade:.3f}[a{k}]")
         if with_video:
-            fc.append(f"[{k}:v]setpts=PTS-STARTPTS,fps={fps},{hdr_to_sdr(info)}{geometry(edl, info, zoom, W, VH)},"
+            fc.append(f"[{k}:v]setpts=PTS-STARTPTS,fps={fps},{hdr_to_sdr(info)}{geometry(edl, info, zoom, W, VH, pcx, pcy)},"
                       f"fps={fps},setsar=1,format=yuv420p,trim=duration={d:.3f}[v{k}]")
     n = len(parts)
     if with_video:
@@ -231,7 +234,7 @@ def build_graph(edl, info, src, subs, fps, W, H, with_video, loudnorm, tmpdir=No
     else:
         fc.append("".join(f"[a{k}]" for k in range(n)) + f"concat=n={n}:v=0:a=1[ac]")
     fc.append(f"[ac]{audio_chain(edl)},{loudnorm}[voice]")
-    total = sum(e - s for s, e, _ in parts)
+    total = sum(p[1] - p[0] for p in parts)
 
     music = edl.get("music")
     if music and with_video:
@@ -293,17 +296,19 @@ def make_proxy(edl, src, info, tmpdir, fps, W):
     import copy
     parts = parts_of(edl)
     v = info["video"]
-    pw = W if v["width"] <= v["height"] else int(W * v["width"] / v["height"]) // 2 * 2
+    # intermediário com folga de resolução (1,5×) para permitir aproximação/centralização sem perda
+    base = min(v["width"], int(W * 1.5)) if v["width"] <= v["height"] else int(W * v["width"] / v["height"])
+    pw = int(base) // 2 * 2
     ph = int(pw * v["height"] / v["width"]) // 2 * 2
     files, new_parts, off = [], [], 0.0
-    for k, (s0, e0, zoom) in enumerate(parts):
+    for k, (s0, e0, zoom, pcx, pcy) in enumerate(parts):
         out = os.path.join(tmpdir, f"px{k:02d}.mkv")
         run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{s0:.3f}", "-t", f"{e0 - s0:.3f}",
              "-i", src, "-map", "0:v:0", "-map", "0:a:0",
              "-vf", f"fps={fps},{hdr_to_sdr(info)}scale={pw}:{ph}:flags=lanczos,format=yuv420p",
              "-c:v", "libx264", "-preset", "veryfast", "-crf", "10", "-c:a", "pcm_s16le", "-ar", "48000", out])
         files.append(out)
-        new_parts.append({"start": off, "end": off + (e0 - s0), "zoom": zoom})
+        new_parts.append({"start": off, "end": off + (e0 - s0), "zoom": zoom, "crop_x": pcx, "crop_y": pcy})
         off += e0 - s0
     lst = os.path.join(tmpdir, "px.txt")
     with open(lst, "w") as f:
@@ -315,7 +320,8 @@ def make_proxy(edl, src, info, tmpdir, fps, W):
         os.remove(x)
     e2 = copy.deepcopy(edl)
     e2["segments"] = [{"start": p["start"], "end": p["end"], "zoom": p["zoom"],
-                       "parts": [{"start": p["start"] + 0.0005, "end": p["end"] - 0.0005, "words": []}]}
+                       "parts": [{"start": p["start"] + 0.0005, "end": p["end"] - 0.0005, "words": [],
+                                  "crop_x": p["crop_x"], "crop_y": p["crop_y"]}]}
                       for p in new_parts]
     # takes do painel
     PH = H_PANEL = None

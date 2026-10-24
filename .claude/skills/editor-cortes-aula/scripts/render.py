@@ -97,8 +97,75 @@ def audio_chain(edl):
             f"acompressor=threshold={p['thr']}dB:ratio={p['ratio']}:attack=10:release=150:makeup=2")
 
 
-def build_graph(edl, info, src, subs, fps, W, H, with_video, loudnorm):
+FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "fonts")
+
+
+def split_top(edl, H):
+    return int((edl.get("split") or {}).get("top_h", 1020)) // 2 * 2 if edl.get("layout") == "split" else H
+
+
+def panel_graph(edl, total, fps, W, H, tmpdir, first_idx, base_dir):
+    """Painel inferior do layout split: fundo + cartões de texto, imagens (Ken Burns) e takes de vídeo."""
+    import panel as P
+    th = P.theme(edl)
+    top = split_top(edl, H)
+    PH = H - top
+    cfg = edl.get("split") or {}
+    inputs, fc = [], []
+    idx = first_idx
+    fc.append(f"[vbase]pad={W}:{H}:0:0:color={th['creme']}[p0]")
+    base = P.base_panel(W, PH, os.path.join(tmpdir, "panel_base.png"), th, cfg.get("handle"))
+    inputs += ["-loop", "1", "-framerate", fps, "-t", f"{total:.3f}", "-i", base]
+    fc.append(f"[{idx}:v]format=rgba[pb];[p0][pb]overlay=0:{top}:shortest=1[p1]")
+    idx += 1
+    cur = "p1"
+    fade = 0.35
+    for k, b in enumerate(edl.get("panel", [])):
+        s, e = float(b["start"]), min(float(b["end"]), total)
+        d = e - s
+        if d <= 0.2:
+            continue
+        kind = b.get("type", "texto")
+        if kind == "texto":
+            png = P.text_card(b, W, PH, os.path.join(tmpdir, f"card{k}.png"), th)
+            inputs += ["-loop", "1", "-framerate", fps, "-t", f"{d:.3f}", "-i", png]
+            chain = f"[{idx}:v]format=rgba"
+        else:
+            path = b["path"] if os.path.isabs(b["path"]) else os.path.join(base_dir, b["path"])
+            if not os.path.exists(path):
+                die(f"arquivo do painel não encontrado: {path}")
+            if kind == "imagem":
+                inputs += ["-loop", "1", "-framerate", fps, "-t", f"{d:.3f}", "-i", path]
+                z = float(b.get("zoom", 1.12))
+                zw, zh = int(W * z) // 2 * 2, int(PH * z) // 2 * 2
+                # Ken Burns lento: leve deslocamento ao longo do take
+                chain = (f"[{idx}:v]scale={zw}:{zh}:force_original_aspect_ratio=increase:flags=lanczos,"
+                         f"crop={zw}:{zh},crop={W}:{PH}:x='(iw-{W})*t/{d:.3f}':y='(ih-{PH})/2',format=rgba")
+            else:  # video
+                ss = float(b.get("source_start", 0))
+                inputs += ["-stream_loop", "-1", "-ss", f"{ss:.3f}", "-t", f"{d:.3f}", "-i", path]
+                chain = (f"[{idx}:v]fps={fps},scale={W}:{PH}:force_original_aspect_ratio=increase:flags=lanczos,"
+                         f"crop={W}:{PH},eq=saturation={b.get('saturation', 0.92)},format=rgba")
+            idx += 1
+            if b.get("label"):
+                lp = P.label(b["label"], W, os.path.join(tmpdir, f"label{k}.png"), th, b.get("kicker"))
+                inputs += ["-loop", "1", "-framerate", fps, "-t", f"{d:.3f}", "-i", lp]
+                fc.append(f"{chain}[b{k}raw]")
+                chain = f"[b{k}raw][{idx}:v]overlay=0:H-h-60:shortest=1,format=rgba"
+            else:
+                idx -= 1  # mantém a contagem coerente com o incremento abaixo
+        idx += 1
+        fc.append(f"{chain},trim=duration={d:.3f},setpts=PTS-STARTPTS,"
+                  f"fade=t=in:st=0:d={fade}:alpha=1,fade=t=out:st={max(0, d - fade):.3f}:d={fade}:alpha=1,"
+                  f"setpts=PTS+{s:.3f}/TB[b{k}]")
+        fc.append(f"[{cur}][b{k}]overlay=0:{top}:eof_action=pass[q{k}]")
+        cur = f"q{k}"
+    return inputs, fc, cur
+
+
+def build_graph(edl, info, src, subs, fps, W, H, with_video, loudnorm, tmpdir=None, base_dir="."):
     parts = parts_of(edl)
+    VH = split_top(edl, H)
     inputs, fc = [], []
     for k, (s, e, zoom) in enumerate(parts):
         inputs += ["-ss", f"{s:.3f}", "-t", f"{e - s:.3f}", "-i", src]
@@ -107,7 +174,7 @@ def build_graph(edl, info, src, subs, fps, W, H, with_video, loudnorm):
         fc.append(f"[{k}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,"
                   f"asetpts=PTS-STARTPTS,afade=t=in:d={fade:.3f},afade=t=out:st={d - fade:.3f}:d={fade:.3f}[a{k}]")
         if with_video:
-            fc.append(f"[{k}:v]setpts=PTS-STARTPTS,{geometry(edl, info, zoom, W, H)},"
+            fc.append(f"[{k}:v]setpts=PTS-STARTPTS,{geometry(edl, info, zoom, W, VH)},"
                       f"fps={fps},setsar=1,format=yuv420p,trim=duration={d:.3f}[v{k}]")
     n = len(parts)
     if with_video:
@@ -140,11 +207,18 @@ def build_graph(edl, info, src, subs, fps, W, H, with_video, loudnorm):
               f"aformat=sample_rates=48000:channel_layouts=stereo[aout]")
 
     if with_video:
-        post = video_post(edl)
+        post = video_post(edl) or ["null"]
+        last_v = "vc"
+        if edl.get("layout") == "split":
+            fc.append(f"[vc]{','.join(post)}[vbase]")
+            pin, pfc, last_v = panel_graph(edl, total, fps, W, H, tmpdir, inputs.count("-i"), base_dir)
+            inputs += pin
+            fc += pfc
+            post = []
         if subs:
-            post.append(f"ass={subs}")
+            post.append(f"ass={subs}:fontsdir={os.path.abspath(FONTS_DIR)}")
         post.append("format=yuv420p")
-        fc.append(f"[vc]{','.join(post)}[vout]")
+        fc.append(f"[{last_v}]{','.join(post)}[vout]")
     return inputs, ";".join(fc), total
 
 
@@ -190,7 +264,8 @@ def main():
             die(f"legenda não encontrada: {a.subs}")
         subs = os.path.join(tmpdir, "legendas.ass")   # caminho sem caracteres especiais para o filtro
         shutil.copy(a.subs, subs)
-    inputs, fc, total = build_graph(edl, info, src, subs, fps, W, H, True, ln)
+    inputs, fc, total = build_graph(edl, info, src, subs, fps, W, H, True, ln, tmpdir,
+                                    os.path.dirname(os.path.abspath(a.edl)))
 
     from fractions import Fraction
     gop = max(1, round(float(Fraction(fps)) * 2))
@@ -209,7 +284,8 @@ def main():
     with open(os.path.join(tmpdir, "ffmpeg_cmd.txt"), "w") as f:
         f.write(" ".join(cmd))
     run(cmd)
-    shutil.rmtree(tmpdir, ignore_errors=True)
+    if not os.environ.get("KEEP_TMP"):
+        shutil.rmtree(tmpdir, ignore_errors=True)
     print(f"\nExportado: {a.out}  |  {W}x{H} @ {fps} fps  |  {total:.2f}s  |  "
           f"loudness de entrada {m['input_i']} LUFS → alvo {TARGET_I} LUFS"
           + ("  |  PRÉVIA (não é a versão final)" if a.preview else ""))

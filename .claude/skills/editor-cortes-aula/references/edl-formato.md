@@ -74,3 +74,28 @@ O EDL é um JSON que descreve **um corte**. Você o escreve depois de ler a tran
 5. Grava `segments` finais (com `parts`) e um relatório de tempo economizado.
 
 O EDL final (`*.final.edl.json`) é o que vai para `captions.py` e `render.py`.
+
+## Layout "split" (duas telas) — padrão da série
+
+```json
+{
+  "layout": "split",
+  "split": {"top_h": 1020, "handle": "@perfil"},
+  "crop_x": 0.5, "crop_y": 0.42,
+  "panel": [
+    {"start": 0, "end": 5.5, "type": "texto", "kicker": "Insight 01",
+     "title": "Juros sobre juros", "subtitle": "têm limite legal",
+     "body": "O que o contrato diz nem sempre é o que a lei permite."},
+    {"start": 5.5, "end": 11, "type": "video", "path": "broll/assinatura.mp4", "source_start": 2.0,
+     "label": "Contrato de empréstimo"},
+    {"start": 11, "end": 16, "type": "imagem", "path": "broll/tribunal.jpg",
+     "kicker": "Jurisprudência", "label": "Súmula 539 do STJ"}
+  ]
+}
+```
+
+- `panel[].start/end`: segundos **do vídeo final**. Tipos: `texto` (cartão), `imagem` (Ken Burns lento; `zoom` 1.05–1.15), `video` (take sem áudio; `source_start` = ponto inicial do take; `saturation`).
+- Entre elementos, aparece o fundo creme com ornamento e `handle`.
+- Legendas: o `captions.py` aplica automaticamente o estilo limpo do split (Jost Medium 54, branco, sombra suave, sem destaque) e posiciona a base em `top_h - 60`.
+- `hook_text` é ignorado no split — use o primeiro cartão do painel como hook visual.
+- Tema: `"theme": {"bordo": "#6B1E2E", ...}` sobrescreve cores (ver `scripts/panel.py`).

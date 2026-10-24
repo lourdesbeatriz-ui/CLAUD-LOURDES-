@@ -21,7 +21,14 @@ WEAK_END = {"de", "do", "da", "dos", "das", "o", "a", "os", "as", "um", "uma", "
 
 DEFAULT_STYLE = {"font": "Inter", "font_size": 70, "accent": "#FFC94A", "text_color": "#FFFFFF",
                  "outline_color": "#000000", "caption_y": 1330, "max_chars": 22, "mode": "ativo",
-                 "hook_font_size": 76, "hook_y": 300, "overlay_y": 560, "margin_l": 100, "margin_r": 120}
+                 "hook_font_size": 76, "hook_y": 300, "overlay_y": 560, "margin_l": 100, "margin_r": 120,
+                 "bold": True, "outline": 5, "outline_alpha": 0x10, "shadow": 2, "blur": 0, "highlight_words": True}
+
+# Layout "split" (duas telas): legenda limpa e centralizada na base da tela de cima,
+# Jost Medium, sem marca-texto/destaque colorido, apenas sombra suave.
+SPLIT_STYLE = {"font": "Jost Medium", "font_size": 54, "mode": "estatico", "bold": False,
+               "outline": 3, "outline_alpha": 0xA0, "shadow": 0, "blur": 4, "highlight_words": False,
+               "max_chars": 26, "margin_l": 80, "margin_r": 80}
 
 
 def ass_color(hex_color, alpha=0):
@@ -94,16 +101,20 @@ def group_cues(tw, max_chars, max_dur=2.5, gap_break=0.25):
 
 
 def build(edl, words, out_ass):
-    st = {**DEFAULT_STYLE, **(edl.get("style") or {})}
+    split = edl.get("layout") == "split"
+    st = {**DEFAULT_STYLE, **(SPLIT_STYLE if split else {}), **(edl.get("style") or {})}
+    if split and "caption_y" not in (edl.get("style") or {}):
+        st["caption_y"] = int((edl.get("split") or {}).get("top_h", 1020)) - 60
     tw, total = timeline_words(edl, words)
     if not tw:
         die("nenhuma palavra no corte — confira o EDL e a transcrição.")
-    hl = {norm_word(t) for h in edl.get("highlight", []) for t in h.split()}
+    hl = {norm_word(t) for h in edl.get("highlight", []) for t in h.split()} if st["highlight_words"] else set()
     cues = group_cues(tw, int(st["max_chars"]))
 
     W, H = 1080, 1920
     white, accent = ass_color(st["text_color"]), ass_color(st["accent"])
-    outline = ass_color(st["outline_color"], 0x10)
+    outline = ass_color(st["outline_color"], int(st["outline_alpha"]))
+    bold = -1 if st["bold"] else 0
     shadow = ass_color("#000000", 0x80)
     mv = H - int(st["caption_y"])
     header = f"""[Script Info]
@@ -116,7 +127,7 @@ YCbCr Matrix: TV.709
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Caption,{st['font']},{st['font_size']},{white},{white},{outline},{shadow},-1,0,0,0,100,100,0,0,1,5,2,2,{st['margin_l']},{st['margin_r']},{mv},1
+Style: Caption,{st['font']},{st['font_size']},{white},{white},{outline},{shadow},{bold},0,0,0,100,100,0,0,1,{st['outline']},{st['shadow']},2,{st['margin_l']},{st['margin_r']},{mv},1
 Style: Hook,{st['font']},{st['hook_font_size']},{white},{white},{outline},{shadow},-1,0,0,0,100,100,0,0,1,6,3,8,{st['margin_l']},{st['margin_r']},{st['hook_y']},1
 Style: Overlay,{st['font']},{int(st['font_size'] * 0.72)},{ass_color('#111111')},{white},{accent},{ass_color('#000000', 0xFF)},-1,0,0,0,100,100,0,0,3,16,0,8,{st['margin_l']},{st['margin_r']},{st['overlay_y']},1
 
@@ -130,12 +141,17 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         c1 = nxt if nxt - cue[-1]["end"] < 0.4 else min(nxt, cue[-1]["end"] + 0.15)
         c1 = min(c1, total)
         pop = r"{\fscx94\fscy94\t(0,90,\fscx100\fscy100)}"
+        if st["blur"]:
+            pop = pop[:-1] + f"\\blur{st['blur']}}}"
+        blurtag = f"{{\\blur{st['blur']}}}" if st["blur"] else ""
+        if split:
+            pop = r"{\fad(80,0)" + (f"\\blur{st['blur']}" if st["blur"] else "") + "}"
 
         def render(active):
             toks = []
             for j, w in enumerate(cue):
                 t = esc(w["word"])
-                if j == active or norm_word(w["word"]) in hl:
+                if (j == active and st["mode"] == "ativo") or norm_word(w["word"]) in hl:
                     toks.append(f"{{\\c{accent}}}{t}{{\\c{white}}}")
                 else:
                     toks.append(t)
@@ -147,12 +163,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 e = cue[j + 1]["start"] if j + 1 < len(cue) else c1
                 if e - s < 0.01:
                     continue
-                ev.append(f"Dialogue: 0,{ass_time(s)},{ass_time(e)},Caption,,0,0,0,,{(pop if j == 0 else '')}{render(j)}")
+                ev.append(f"Dialogue: 0,{ass_time(s)},{ass_time(e)},Caption,,0,0,0,,{(pop if j == 0 else blurtag)}{render(j)}")
         else:
             ev.append(f"Dialogue: 0,{ass_time(c0)},{ass_time(c1)},Caption,,0,0,0,,{pop}{render(-1)}")
         srt.append(f"{n + 1}\n{srt_time(c0)} --> {srt_time(c1)}\n{' '.join(w['word'] for w in cue)}\n")
 
-    if edl.get("hook_text"):
+    if edl.get("hook_text") and not split:  # no split o hook vai como cartão no painel
         d = float(edl.get("hook_duration", 3.0))
         ev.insert(0, f"Dialogue: 1,{ass_time(0)},{ass_time(min(d, total))},Hook,,0,0,0,,"
                      f"{{\\fad(120,250)}}{esc(edl['hook_text'])}")

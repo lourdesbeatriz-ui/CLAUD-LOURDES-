@@ -58,6 +58,78 @@ def transcribe_media(path, model_name, lang, device, initial_prompt):
     return words, segs, "openai-whisper"
 
 
+def transcribe_sherpa(path, model_dir, vad_path, lang, threads=4):
+    """Alternativa sem Hugging Face: Whisper (ONNX, sherpa-onnx) + VAD Silero, ambos baixáveis do GitHub
+    (github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models). O Whisper ONNX não dá tempo por palavra,
+    então cada trecho de fala detectado pelo VAD (curto, ~1–6 s) tem suas palavras distribuídas
+    proporcionalmente ao tamanho, apenas sobre os quadros com voz (energia) — erro típico < 150 ms."""
+    import glob
+    import subprocess
+    import numpy as np
+    import sherpa_onnx
+
+    sr = 16000
+    raw = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-i", path, "-vn", "-ac", "1", "-ar", str(sr),
+                          "-f", "f32le", "-"], stdout=subprocess.PIPE, check=True).stdout
+    audio = np.frombuffer(raw, dtype=np.float32).copy()
+    enc = glob.glob(os.path.join(model_dir, "*encoder*.onnx"))[0]
+    dec = glob.glob(os.path.join(model_dir, "*decoder*.onnx"))[0]
+    tok = glob.glob(os.path.join(model_dir, "*tokens.txt"))[0]
+    rec = sherpa_onnx.OfflineRecognizer.from_whisper(encoder=enc, decoder=dec, tokens=tok, language=lang,
+                                                     num_threads=threads, tail_paddings=800)
+    cfg = sherpa_onnx.VadModelConfig()
+    cfg.silero_vad.model = vad_path
+    cfg.silero_vad.threshold = 0.45
+    cfg.silero_vad.min_silence_duration = 0.22
+    cfg.silero_vad.min_speech_duration = 0.2
+    cfg.silero_vad.max_speech_duration = 12
+    cfg.sample_rate = sr
+    vad = sherpa_onnx.VoiceActivityDetector(cfg, buffer_size_in_seconds=60)
+    win = cfg.silero_vad.window_size
+    chunks = []
+    for i in range(0, len(audio), win):
+        vad.accept_waveform(audio[i:i + win])
+        while not vad.empty():
+            chunks.append((vad.front.start, np.array(vad.front.samples, dtype=np.float32)))
+            vad.pop()
+    vad.flush()
+    while not vad.empty():
+        chunks.append((vad.front.start, np.array(vad.front.samples, dtype=np.float32)))
+        vad.pop()
+
+    hop = 160  # 10 ms
+    words, segs = [], []
+    for start, samples in chunks:
+        st = rec.create_stream()
+        st.accept_waveform(sr, samples)
+        rec.decode_stream(st)
+        text = st.result.text.strip()
+        toks = text.split()
+        if not toks:
+            continue
+        t0 = start / sr
+        n = len(samples) // hop
+        rms = np.sqrt(np.mean(samples[:n * hop].reshape(n, hop) ** 2, axis=1) + 1e-12) if n else np.array([1.0])
+        thr = max(np.percentile(rms, 30) * 1.2, 1e-4)
+        voiced = (rms > thr).astype(float)
+        if voiced.sum() < 3:
+            voiced[:] = 1
+        cum = np.concatenate([[0], np.cumsum(voiced)]) / voiced.sum()
+        weights = np.array([len(x) + 1 for x in toks], dtype=float)
+        fr = np.concatenate([[0], np.cumsum(weights)]) / weights.sum()
+        def at(f):  # fração de "fala" -> tempo
+            k = int(np.searchsorted(cum, f, side="left"))
+            return t0 + min(k, n) * hop / sr
+        w0 = len(words)
+        for j, x in enumerate(toks):
+            s, e = at(fr[j] + 1e-6), at(fr[j + 1])
+            words.append({"word": x, "start": round(s, 3), "end": round(max(e, s + 0.08), 3), "prob": 0.8})
+        segs.append({"start": round(t0, 3), "end": round(t0 + len(samples) / sr, 3), "text": text,
+                     "w0": w0, "w1": len(words) - 1})
+        print(f"[{tc(t0)}] {text}", file=sys.stderr)
+    return words, segs, "sherpa-onnx-whisper"
+
+
 def parse_srt(path):
     """Importa SRT; distribui o tempo de cada bloco entre as palavras proporcionalmente ao tamanho."""
     txt = open(path, encoding="utf-8-sig").read()
@@ -106,6 +178,8 @@ def main():
     ap.add_argument("--device", default="auto", help="cpu|cuda|auto")
     ap.add_argument("--prompt", default="Aula em português do Brasil. Termos: STJ, STF, CDC, CPC, BACEN, Selic, CDI.",
                     help="contexto/vocabulário para melhorar nomes e termos técnicos")
+    ap.add_argument("--sherpa-dir", help="pasta do modelo Whisper ONNX (sherpa-onnx) — usa este motor")
+    ap.add_argument("--vad", help="silero_vad.onnx (obrigatório com --sherpa-dir)")
     ap.add_argument("--print", action="store_true", help="imprime a transcrição com timecodes")
     ap.add_argument("--words", action="store_true", help="com --print, lista índice:palavra@tempo")
     a = ap.parse_args()
@@ -125,7 +199,12 @@ def main():
                 device = "cuda" if torch.cuda.is_available() else "cpu"
             except ImportError:
                 device = "cpu"
-        words, segs, engine = transcribe_media(a.input, a.model, a.lang, device, a.prompt)
+        if a.sherpa_dir:
+            if not a.vad:
+                die("--vad é obrigatório com --sherpa-dir")
+            words, segs, engine = transcribe_sherpa(a.input, a.sherpa_dir, a.vad, a.lang)
+        else:
+            words, segs, engine = transcribe_media(a.input, a.model, a.lang, device, a.prompt)
         data = {"language": a.lang, "source": os.path.abspath(a.input), "engine": engine,
                 "model": a.model, "words": words, "segments": segs}
     for i, w in enumerate(data["words"]):

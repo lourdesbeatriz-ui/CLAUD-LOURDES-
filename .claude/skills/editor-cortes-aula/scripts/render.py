@@ -20,7 +20,11 @@ AUDIO_PRESETS = {
     "leve":   dict(hp=70, nr=8, nf=-30, mud=-1.5, pres=1.5, air=0.5, ratio=2, thr=-20),
     "padrao": dict(hp=80, nr=12, nf=-28, mud=-2.5, pres=2.5, air=1.0, ratio=3, thr=-22),
     "forte":  dict(hp=90, nr=18, nf=-25, mud=-3.0, pres=3.0, air=1.0, ratio=4, thr=-24),
+    # "limpo": remoção de ruído por rede neural (RNNoise, modelo de fala em gravação) + FFT leve.
+    # Pausas ficam em silêncio real, timbre preservado (testado por bandas de frequência).
+    "limpo":  dict(hp=80, nr=6, nf=-40, mud=-2.0, pres=2.0, air=1.0, ratio=3, thr=-24, rnn=True),
 }
+ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
 VIDEO_PRESETS = {
     "nenhum": None,
     "leve":   dict(contrast=1.03, saturation=1.04, brightness=0.0, dn="1:1:4:4", sharp=0.3),
@@ -105,7 +109,11 @@ def video_post(edl):
 
 def audio_chain(edl):
     p = AUDIO_PRESETS.get(edl.get("audio_preset", "padrao"), AUDIO_PRESETS["padrao"])
-    return (f"highpass=f={p['hp']},afftdn=nr={p['nr']}:nf={p['nf']}:tn=1,"
+    rnn = ""
+    if p.get("rnn"):
+        model = os.path.abspath(os.path.join(ASSETS, "rnnoise", "sh.rnnn"))
+        rnn = f"aresample=48000,arnndn=m={model}:mix=0.9,"
+    return (f"highpass=f={p['hp']},{rnn}afftdn=nr={p['nr']}:nf={p['nf']}:tn=1,"
             f"equalizer=f=250:t=q:w=1.0:g={p['mud']},equalizer=f=3000:t=q:w=1.2:g={p['pres']},"
             f"equalizer=f=10000:t=h:w=0.7:g={p['air']},deesser=i=0.4,"
             f"acompressor=threshold={p['thr']}dB:ratio={p['ratio']}:attack=10:release=150:makeup=2")
@@ -189,6 +197,21 @@ def panel_graph(edl, total, fps, W, H, tmpdir, first_idx, base_dir):
     return inputs, fc, cur
 
 
+def sfx_events(edl, total):
+    """Efeitos sonoros discretos. Manual: edl["sfx"] = [{"t": s, "file": "whoosh", "db": -20}].
+    Automático (edl["sfx_auto"]): soft_hit na abertura, whoosh nas trocas do painel, tick nos cartões."""
+    ev = list(edl.get("sfx", []))
+    if edl.get("sfx_auto"):
+        ev.append({"t": 0.0, "file": "soft_hit", "db": -24})
+        for b in edl.get("panel", []):
+            t = float(b["start"])
+            if 0.3 < t < total - 0.5:
+                ev.append({"t": max(0, t - 0.25), "file": "whoosh", "db": -26})
+            if b.get("type") == "texto" and t < total - 0.5:
+                ev.append({"t": t + 0.35, "file": "tick", "db": -30})
+    return [e for e in ev if 0 <= e["t"] < total]
+
+
 def build_graph(edl, info, src, subs, fps, W, H, with_video, loudnorm, tmpdir=None, base_dir="."):
     parts = parts_of(edl)
     VH = split_top(edl, H)
@@ -229,6 +252,21 @@ def build_graph(edl, info, src, subs, fps, W, H, with_video, loudnorm, tmpdir=No
         last_a = "mixed"
     else:
         last_a = "voice"
+    sfx = sfx_events(edl, total) if with_video else []
+    if sfx:
+        labels = []
+        for j, ev in enumerate(sfx):
+            path = os.path.abspath(os.path.join(ASSETS, "sfx", f"{ev['file']}.wav"))
+            if not os.path.exists(path):
+                die(f"efeito sonoro não encontrado: {path}")
+            inputs += ["-i", path]
+            si = inputs.count("-i") - 1
+            ms = int(max(0, ev["t"]) * 1000)
+            fc.append(f"[{si}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,"
+                      f"volume={ev.get('db', -20)}dB,adelay={ms}|{ms}[sfx{j}]")
+            labels.append(f"[sfx{j}]")
+        fc.append(f"[{last_a}]{''.join(labels)}amix=inputs={len(labels) + 1}:duration=first:normalize=0[withsfx]")
+        last_a = "withsfx"
     fc.append(f"[{last_a}]alimiter=limit=0.89:level=0:attack=5:release=50,"
               f"aformat=sample_rates=48000:channel_layouts=stereo[aout]")
 

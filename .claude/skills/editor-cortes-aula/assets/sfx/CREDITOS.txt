@@ -1,0 +1,5 @@
+Efeitos sonoros sintetizados com ffmpeg (ruído rosa/senoides) especialmente para esta skill.
+Obra original, sem samples de terceiros — livres para uso comercial.
+whoosh.wav   transição suave do painel inferior
+tick.wav     entrada discreta de cartão de texto
+soft_hit.wav abertura (primeiro quadro), grave e curto

@@ -98,6 +98,26 @@ def transcribe_sherpa(path, model_dir, vad_path, lang, threads=4):
         vad.pop()
 
     hop = 160  # 10 ms
+
+    def split_long(start, samples, target=4.0, max_len=6.0):
+        """Divide trechos longos nos pontos de menor energia (respiros), para tempos por palavra precisos."""
+        if len(samples) / sr <= max_len:
+            return [(start, samples)]
+        n = len(samples) // hop
+        rms = np.sqrt(np.mean(samples[:n * hop].reshape(n, hop) ** 2, axis=1) + 1e-12)
+        smooth = np.convolve(rms, np.ones(15) / 15, mode="same")
+        out, a = [], 0
+        while (n - a) * hop / sr > max_len:
+            lo, hi = a + int(target * 0.6 * 100), min(n - 50, a + int(max_len * 100))
+            if hi <= lo:
+                break
+            cut = lo + int(np.argmin(smooth[lo:hi]))
+            out.append((start + a * hop, samples[a * hop:cut * hop]))
+            a = cut
+        out.append((start + a * hop, samples[a * hop:]))
+        return out
+
+    chunks = [c for st0, smp in chunks for c in split_long(st0, smp)]
     words, segs = [], []
     for start, samples in chunks:
         st = rec.create_stream()

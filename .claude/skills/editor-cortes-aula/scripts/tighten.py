@@ -159,7 +159,12 @@ def main():
         for sg in segs:
             for p in sg["parts"]:
                 if p["words"]:
-                    p["start"] = min(p["start"], snap_to_breath(src, words[p["words"][0]]["start"]))
+                    i0 = p["words"][0]
+                    w0 = words[i0]
+                    # procura o respiro só entre a palavra anterior e a primeira palavra do trecho
+                    gap = w0["start"] - words[i0 - 1]["end"] if i0 > 0 else 0.45
+                    back = min(0.45, max(0.10, gap + 0.06))
+                    p["start"] = min(p["start"], snap_to_breath(src, w0["start"], back=back))
             sg["start"] = sg["parts"][0]["start"]
     except SystemExit:
         print("AVISO: fonte não encontrada — inícios não ajustados ao áudio.")

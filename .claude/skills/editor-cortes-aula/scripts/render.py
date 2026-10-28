@@ -110,6 +110,8 @@ def video_post(edl):
     g = adj.get("gamma", 1.0)
     if (c, s, b, g) != (1.0, 1.0, 0.0, 1.0):
         f.append(f"eq=contrast={c}:saturation={s}:brightness={b}:gamma={g}")
+    if adj.get("curves"):  # ex.: recuperar altas luzes estouradas
+        f.append(f"curves=master='{adj['curves']}'")
     temp = float(adj.get("temperature", 0))
     if temp:
         f.append(f"colortemperature=temperature={int(6500 + 1500 * max(-1, min(1, -temp)))}")
@@ -123,7 +125,7 @@ def audio_chain(edl):
     rnn = ""
     if p.get("rnn"):
         model = os.path.abspath(os.path.join(ASSETS, "rnnoise", "sh.rnnn"))
-        rnn = f"aresample=48000,arnndn=m={model}:mix=0.9,"
+        rnn = f"aresample=48000,arnndn=m={model}:mix={float(edl.get('rnn_mix', 0.9))},"
     return (f"highpass=f={p['hp']},{rnn}afftdn=nr={p['nr']}:nf={p['nf']}:tn=1,"
             f"equalizer=f=250:t=q:w=1.0:g={p['mud']},equalizer=f=3000:t=q:w=1.2:g={p['pres']},"
             f"equalizer=f=10000:t=h:w=0.7:g={p['air']},deesser=i=0.4,"
@@ -217,7 +219,16 @@ def sfx_events(edl, total):
     """Efeitos sonoros discretos. Manual: edl["sfx"] = [{"t": s, "file": "whoosh", "db": -20}].
     Automático (edl["sfx_auto"]): soft_hit na abertura, whoosh nas trocas do painel, tick nos cartões."""
     ev = list(edl.get("sfx", []))
-    if edl.get("sfx_auto"):
+    if edl.get("sfx_auto") and edl.get("layout") != "split":
+        ev.append({"t": 0.0, "file": "soft_hit", "db": -24})
+        off = 0.0
+        for k, seg in enumerate(edl["segments"]):
+            if k > 0 and off < total - 0.5:
+                ev.append({"t": max(0, off - 0.18), "file": "whoosh", "db": -25})  # transição sonora no corte
+            off += sum(p["end"] - p["start"] for p in seg.get("parts") or [seg])
+        for o in edl.get("overlays", []):
+            ev.append({"t": float(o["start"]) + 0.1, "file": "tick", "db": -30})
+    elif edl.get("sfx_auto"):
         ev.append({"t": 0.0, "file": "soft_hit", "db": -24})
         for b in edl.get("panel", []):
             t = float(b["start"])

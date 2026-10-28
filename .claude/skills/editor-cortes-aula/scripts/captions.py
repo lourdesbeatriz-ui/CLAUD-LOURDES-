@@ -142,6 +142,8 @@ YCbCr Matrix: TV.709
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Caption,{st['font']},{st['font_size']},{white},{white},{outline},{shadow},{bold},0,0,0,100,100,0,0,1,{st['outline']},{st['shadow']},2,{st['margin_l']},{st['margin_r']},{mv},1
 Style: Hook,{st['font']},{st['hook_font_size']},{white},{white},{outline},{shadow},-1,0,0,0,100,100,0,0,1,6,3,8,{st['margin_l']},{st['margin_r']},{st['hook_y']},1
+Style: HookElegant,Cormorant Garamond Medium,{int(st.get('hook_elegant_size', 104))},{white},{ass_color('#000000', 0xFF)},{ass_color('#000000', 0x90)},{ass_color('#000000', 0xFF)},0,0,0,0,100,100,0,0,1,3,0,8,{st['margin_l']},{st['margin_r']},{st['hook_y']},1
+Style: HookKicker,Jost,34,{white},{ass_color('#000000', 0xFF)},{ass_color('#000000', 0xA0)},{ass_color('#000000', 0xFF)},0,0,0,0,100,100,7,0,1,2,0,8,{st['margin_l']},{st['margin_r']},{max(0, st['hook_y'] - 70)},1
 Style: Overlay,{st['font']},{int(st['font_size'] * 0.72)},{ass_color('#111111')},{white},{accent},{ass_color('#000000', 0xFF)},-1,0,0,0,100,100,0,0,3,16,0,8,{st['margin_l']},{st['margin_r']},{st['overlay_y']},1
 
 {panel_styles}
@@ -184,8 +186,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     if edl.get("hook_text") and not split:  # no split o hook vai como cartão no painel
         d = float(edl.get("hook_duration", 3.0))
-        ev.insert(0, f"Dialogue: 1,{ass_time(0)},{ass_time(min(d, total))},Hook,,0,0,0,,"
-                     f"{{\\fad(120,250)}}{esc(edl['hook_text'])}")
+        if st.get("hook_style") == "elegante":
+            # título de gancho "sendo escrito" (Cormorant branca, sombra suave), com kicker opcional
+            if edl.get("hook_kicker"):
+                ev.insert(0, f"Dialogue: 1,{ass_time(0.05)},{ass_time(min(d, total))},HookKicker,,0,0,0,,"
+                             f"{{\\fad(200,300)\\blur3}}{esc(edl['hook_kicker'].upper())}")
+            lines = edl["hook_text"].split("\\N")
+            body = "\\N".join(panel_ass._kf(ln, min(1.1, 0.05 * len(ln) + 0.25)) for ln in lines)
+            ev.insert(0, f"Dialogue: 1,{ass_time(0.15)},{ass_time(min(d, total))},HookElegant,,0,0,0,,"
+                         f"{{\\fad(0,300)\\blur5}}{body}")
+        else:
+            ev.insert(0, f"Dialogue: 1,{ass_time(0)},{ass_time(min(d, total))},Hook,,0,0,0,,"
+                         f"{{\\fad(120,250)}}{esc(edl['hook_text'])}")
     if split and edl.get("panel_anim", True):
         top = int((edl.get("split") or {}).get("top_h", 1020))
         ev.extend(panel_ass.events(edl, total, top))

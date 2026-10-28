@@ -14,6 +14,22 @@
 
 Aplique este padrão a TODOS os cortes, salvo pedido diferente. Ele foi aprovado pela usuária.
 
+## Formato "tela única" (quando a usuária pedir sem duas telas)
+- `layout: "crop"`, `base_zoom` ≈ 1.22 + `facecenter.py --face-y 0.36` (rosto no terço superior, acompanhado).
+- Iluminação: gravações do iPhone saem com altas luzes estouradas → `video_adjust`:
+  `{"contrast":1.0,"saturation":1.03,"gamma":0.97,"curves":"0/0 0.25/0.24 0.5/0.47 0.75/0.69 0.9/0.81 1/0.9"}`.
+- Legenda: Jost Medium 62, branca, centralizada (base y≈1420), sombra suave, sem destaque.
+- Gancho: `hook_text` + `hook_kicker` com `style.hook_style: "elegante"` (Cormorant branca sendo escrita, 0–3 s).
+  O título do gancho NÃO repete a fala — ele cria tensão/curiosidade complementar e fiel.
+- Transição: punch-in sutil alternando `zoom` 1.0/1.07 entre blocos + whoosh discreto em cada corte
+  (`sfx_auto`), soft hit na abertura.
+- Áudio: `audio_preset: "limpo"`, `rnn_mix: 0.8`.
+
+## Ganchos fortes (critério)
+Comece pela frase mais contundente do trecho (ex.: "Você está rasgando dinheiro.", "Quanto você cobra
+por R$ 1 milhão de dívida?"). Pode repetir a frase no fim como fechamento quando ela aparece de novo
+naturalmente na fala. Evite começar por contexto ou transição.
+
 ## Formato: duas telas (`"layout": "split"`)
 
 ```

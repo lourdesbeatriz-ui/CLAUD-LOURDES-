@@ -60,12 +60,14 @@ def main():
             imgs, w, h = frames(src, p["start"], p["end"], a.step)
             xs, ys, track_x = [], [], []
             for g in imgs:
-                found = list(front.detectMultiScale(g, 1.1, 5, minSize=(w // 12, w // 12)))
+                found = list(front.detectMultiScale(g, 1.1, 5, minSize=(w // 6, w // 6)))
                 if not found:
-                    found = list(prof.detectMultiScale(g, 1.1, 4, minSize=(w // 12, w // 12)))
+                    found = list(prof.detectMultiScale(g, 1.1, 4, minSize=(w // 6, w // 6)))
                     if not found:
                         found = [(w - x - fw, y, fw, fh) for x, y, fw, fh in
-                                 prof.detectMultiScale(cv2.flip(g, 1), 1.1, 4, minSize=(w // 12, w // 12))]
+                                 prof.detectMultiScale(cv2.flip(g, 1), 1.1, 4, minSize=(w // 6, w // 6))]
+                # descarta falsos positivos (mãos, objetos): rosto tem tamanho mínimo e fica na metade de cima
+                found = [r for r in found if r[1] + r[3] / 2 < 0.7 * h]
                 if found:
                     x, y, fw, fh = max(found, key=lambda r: r[2] * r[3])
                     hx = (x + fw / 2 - a.head_shift * fw) / w  # centro da cabeça (inclui cabelo/nuca)

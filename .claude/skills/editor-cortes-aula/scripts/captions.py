@@ -192,7 +192,15 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 ev.insert(0, f"Dialogue: 1,{ass_time(0.05)},{ass_time(min(d, total))},HookKicker,,0,0,0,,"
                              f"{{\\fad(200,300)\\blur3}}{esc(edl['hook_kicker'].upper())}")
             lines = edl["hook_text"].split("\\N")
-            body = "\\N".join(panel_ass._kf(ln, min(1.1, 0.05 * len(ln) + 0.25)) for ln in lines)
+            # palavra por palavra surgindo (alpha inclui a sombra — nada de "fantasma" antes da hora)
+            out_lines, ms = [], 0
+            for ln in lines:
+                ws = []
+                for wd in ln.split():
+                    ws.append(f"{{\\alpha&HFF&\\t({ms},{ms + 220},\\alpha&H00&)}}{esc(wd)}")
+                    ms += 140 + 18 * len(wd)
+                out_lines.append(" ".join(ws))
+            body = "\\N".join(out_lines)
             ev.insert(0, f"Dialogue: 1,{ass_time(0.15)},{ass_time(min(d, total))},HookElegant,,0,0,0,,"
                          f"{{\\fad(0,300)\\blur5}}{body}")
         else:

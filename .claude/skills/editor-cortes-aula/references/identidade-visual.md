@@ -23,7 +23,9 @@ Aplique este padrão a TODOS os cortes, salvo pedido diferente. Ele foi aprovado
   O título do gancho NÃO repete a fala — ele cria tensão/curiosidade complementar e fiel.
 - Transição: punch-in sutil alternando `zoom` 1.0/1.07 entre blocos + whoosh discreto em cada corte
   (`sfx_auto`), soft hit na abertura.
-- Áudio: `audio_preset: "limpo"`, `rnn_mix: 0.8`.
+- Áudio: `audio_preset: "limpo"`, `rnn_mix: 0.8`, `lowpass_hz: 13000` (corte suave do chiado).
+  NÃO usar `limpo_plus` (expansor de pausas + dupla redução) — a usuária achou o som muito pior.
+  Preferir voz natural com um pouco de ruído a voz processada/abafada.
 
 ## Ganchos fortes (critério)
 Comece pela frase mais contundente do trecho (ex.: "Você está rasgando dinheiro.", "Quanto você cobra

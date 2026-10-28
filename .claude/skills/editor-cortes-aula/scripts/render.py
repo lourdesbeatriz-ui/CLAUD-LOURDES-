@@ -131,7 +131,8 @@ def audio_chain(edl):
         model = os.path.abspath(os.path.join(ASSETS, "rnnoise", "sh.rnnn"))
         rnn = f"aresample=48000,arnndn=m={model}:mix={float(edl.get('rnn_mix', 0.9))},"
     pre = f"afftdn=nr={p['pre_nr']}:nf=-45:tn=1," if p.get("pre_nr") else ""
-    lp = f"lowpass=f={p['lowpass']}," if p.get("lowpass") else ""
+    lp_hz = edl.get("lowpass_hz") or p.get("lowpass")
+    lp = f"lowpass=f={lp_hz}," if lp_hz else ""
     gate = ""
     if p.get("gate") and edl.get("_input_lufs") is not None:
         # limiar ~24 dB abaixo do nível médio da fala: só as pausas são atenuadas

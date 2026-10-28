@@ -23,6 +23,10 @@ AUDIO_PRESETS = {
     # "limpo": remoção de ruído por rede neural (RNNoise, modelo de fala em gravação) + FFT leve.
     # Pausas ficam em silêncio real, timbre preservado (testado por bandas de frequência).
     "limpo":  dict(hp=80, nr=6, nf=-40, mud=-2.0, pres=2.0, air=1.0, ratio=3, thr=-24, rnn=True),
+    # "limpo_plus": para gravações baixas/com chiado — FFT antes e depois da rede neural, corte de
+    # agudos acima de 11 kHz (onde mora o chiado) e expansor que silencia o ruído nas pausas.
+    "limpo_plus": dict(hp=90, nr=10, nf=-48, mud=-2.0, pres=2.0, air=0.0, ratio=3, thr=-24, rnn=True,
+                       pre_nr=18, lowpass=11000, gate=True),
 }
 ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
 VIDEO_PRESETS = {
@@ -126,7 +130,14 @@ def audio_chain(edl):
     if p.get("rnn"):
         model = os.path.abspath(os.path.join(ASSETS, "rnnoise", "sh.rnnn"))
         rnn = f"aresample=48000,arnndn=m={model}:mix={float(edl.get('rnn_mix', 0.9))},"
-    return (f"highpass=f={p['hp']},{rnn}afftdn=nr={p['nr']}:nf={p['nf']}:tn=1,"
+    pre = f"afftdn=nr={p['pre_nr']}:nf=-45:tn=1," if p.get("pre_nr") else ""
+    lp = f"lowpass=f={p['lowpass']}," if p.get("lowpass") else ""
+    gate = ""
+    if p.get("gate") and edl.get("_input_lufs") is not None:
+        # limiar ~24 dB abaixo do nível médio da fala: só as pausas são atenuadas
+        thr = 10 ** ((float(edl["_input_lufs"]) - 24) / 20)
+        gate = f"agate=threshold={thr:.5f}:ratio=2:attack=5:release=200:range=0.25:knee=4,"
+    return (f"highpass=f={p['hp']},{pre}{rnn}afftdn=nr={p['nr']}:nf={p['nf']}:tn=1,{lp}{gate}"
             f"equalizer=f=250:t=q:w=1.0:g={p['mud']},equalizer=f=3000:t=q:w=1.2:g={p['pres']},"
             f"equalizer=f=10000:t=h:w=0.7:g={p['air']},deesser=i=0.4,"
             f"acompressor=threshold={p['thr']}dB:ratio={p['ratio']}:attack=10:release=150:makeup=2")
@@ -224,7 +235,7 @@ def sfx_events(edl, total):
         off = 0.0
         for k, seg in enumerate(edl["segments"]):
             if k > 0 and off < total - 0.5:
-                ev.append({"t": max(0, off - 0.18), "file": "whoosh", "db": -25})  # transição sonora no corte
+                ev.append({"t": max(0, off - 0.18), "file": "whoosh", "db": float(edl.get("whoosh_db", -25))})  # transição no corte
             off += sum(p["end"] - p["start"] for p in seg.get("parts") or [seg])
         for o in edl.get("overlays", []):
             ev.append({"t": float(o["start"]) + 0.1, "file": "tick", "db": -30})
@@ -412,6 +423,9 @@ def main():
         edl, src = make_proxy(edl, src, info, tmpdir, fps, W)
         info = probe(src)
     m = measure_loudness(edl, info, src, fps, W, H)
+    if AUDIO_PRESETS.get(edl.get("audio_preset"), {}).get("gate"):
+        edl["_input_lufs"] = float(m["input_i"])
+        m = measure_loudness(edl, info, src, fps, W, H)  # remede já com o expansor
     ln = (f"loudnorm=I={TARGET_I}:TP={TARGET_TP}:LRA={TARGET_LRA}:measured_I={m['input_i']}:"
           f"measured_TP={m['input_tp']}:measured_LRA={m['input_lra']}:measured_thresh={m['input_thresh']}:"
           f"offset={m['target_offset']}:linear=true,aresample=48000")

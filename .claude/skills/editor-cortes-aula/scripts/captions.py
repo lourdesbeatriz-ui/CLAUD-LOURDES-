@@ -239,8 +239,7 @@ def cpl_text(tw):
         elif prev_end and core in ("A", "O", "E", "É"):
             core = core.lower()
         prev_end = re.search(r"[.!?…]$", raw) is not None
-        if core:
-            out.append({**w, "word": core})
+        out.append({**w, "word": core})
     return out
 
 
@@ -249,12 +248,41 @@ def build_cpl(edl, words, out_ass):
     entrada suave; frases de destaque em composição branco + itálico dourado."""
     st = {**CPL_STYLE, **(edl.get("style") or {})}
     tw, total = timeline_words(edl, words)
-    tw = cpl_text(tw)
-    cues = []
-    for c in group_cues(tw, int(st["max_chars"]), max_dur=1.8, gap_break=0.22):
-        while len(c) > int(st["max_words"]):
-            cues.append(c[:int(st["max_words"])]); c = c[int(st["max_words"]):]
-        cues.append(c)
+    # nomes próprios compostos não se separam ("Banco Central", "Conselho Monetário Nacional")
+    joined = []
+    for w in tw:
+        if joined and w["word"][:1].isupper() and joined[-1]["word"].split()[-1][:1].isupper() \
+                and w["start"] - joined[-1]["end"] < 0.25 and not joined[-1]["word"].split()[-1].isupper():
+            joined[-1] = {**joined[-1], "word": joined[-1]["word"] + " " + w["word"], "end": w["end"]}
+        else:
+            joined.append(dict(w))
+    tw = joined
+    mw, mc = int(st["max_words"]), int(st["max_chars"])
+    raw_cues = []
+    for c in group_cues(tw, mc, max_dur=2.0, gap_break=0.3):
+        while len(c) > mw:
+            raw_cues.append(c[:mw]); c = c[mw:]
+        raw_cues.append(c)
+    # palavra sozinha na tela fica "picotada": junta com a vizinha quando cabe
+    # agora sim: minúsculas/sem pontuação (a divisão acima respeitou o fim das frases)
+    flat = [w for c in raw_cues for w in c]
+    clean = cpl_text(flat)
+    k = 0
+    ends = []
+    for ci, c in enumerate(raw_cues):
+        ends.append(re.search(r"[.!?…]$", c[-1]["word"]) is not None)  # fim de frase (antes de limpar)
+        raw_cues[ci] = [x for x in clean[k:k + len(c)] if x["word"]]
+        k += len(c)
+    pairs = [(c, e) for c, e in zip(raw_cues, ends) if c]
+    cues, prev_end = [], True
+    for c, e in pairs:
+        txt = lambda cc: " ".join(x["word"] for x in cc)
+        if cues and not prev_end and (len(c) == 1 or len(cues[-1]) == 1) and len(txt(cues[-1] + c)) <= mc + 4 \
+                and c[0]["start"] - cues[-1][-1]["end"] < 0.35:
+            cues[-1] = cues[-1] + c
+        else:
+            cues.append(c)
+        prev_end = e
     emph = edl.get("emphasis", [])
     W, H = 1080, 1920
     white, gold = ass_color(st["text_color"]), ass_color(st["accent"])
@@ -291,15 +319,29 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         ev.append(f"Dialogue: 0,{ass_time(c0)},{ass_time(c1)},Cap,,0,0,0,,"
                   f"{{\\an2\\move(540,{y + 16},540,{y},0,170)\\fad(110,70)\\blur6}}{txt}")
     ey = int(st["emph_y"])
+    fdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "fonts")
+
+    def fit(text, fname, size, max_w=930):
+        """reduz o corpo da fonte até a linha caber na largura útil (libass ≈ métrica do PIL × 1.0)"""
+        try:
+            from PIL import ImageFont
+            f = ImageFont.truetype(os.path.join(fdir, fname), size)
+            w = f.getlength(text) * 0.71  # libass desenha ~71% da largura medida pelo PIL no mesmo corpo
+            return int(size * min(1.0, max_w / w)) if w else size
+        except Exception:
+            return size
     for e in emph:
         s0, s1 = float(e["start"]), min(float(e["end"]), total)
         l1, l2 = esc(e.get("line1", "")), esc(e.get("line2", ""))
+        f1 = fit(l1, "InstrumentSerif-Regular.ttf", int(st["emph_size"]))
+        f2 = fit(l2, "PlayfairDisplay-BoldItalic.ttf", int(st["emph2_size"]))
         if l1:
             ev.append(f"Dialogue: 2,{ass_time(s0)},{ass_time(s1)},Emph1,,0,0,0,,"
-                      f"{{\\an2\\move(540,{ey - 150 + 18},540,{ey - 150},0,220)\\fad(150,150)\\blur6}}{l1}")
+                      f"{{\\an2\\move(540,{ey - int(f2 * 0.76) + 18},540,{ey - int(f2 * 0.76)},0,220)"
+                      f"\\fs{f1}\\fad(150,150)\\blur6}}{l1}")
         if l2:
             ev.append(f"Dialogue: 3,{ass_time(s0 + 0.18)},{ass_time(s1)},Emph2,,0,0,0,,"
-                      f"{{\\an2\\pos(540,{ey + 20})\\fscx86\\fscy86\\t(0,260,\\fscx100\\fscy100)"
+                      f"{{\\an2\\pos(540,{ey + 20})\\fs{f2}\\fscx86\\fscy86\\t(0,260,\\fscx100\\fscy100)"
                       f"\\fad(140,150)\\blur5}}{l2}")
     with open(out_ass, "w", encoding="utf-8") as f:
         f.write(header + "\n".join(ev) + "\n")

@@ -15,7 +15,7 @@ Estas instruções são permanentes. Aplique-as a todo novo vídeo sem que o usu
 
 ## Padrão desta usuária (sempre aplicar)
 
-Leia **`references/identidade-visual.md`** antes de qualquer corte. Resumo: formato **duas telas** (`layout: "split"`) — professora em cima com legenda branca centralizada **sem marca-texto**; embaixo, painel creme que **mescla cartões de insight, imagens e takes de vídeo** relacionados à fala; paleta bordô/marrom; Cormorant Garamond + Jost; visual clássico e clean, sem contornos fortes. Até **3 insights** por vídeo, cada um vira um Reels.
+Leia **`references/identidade-visual.md`** antes de qualquer corte — para lives/CPLs use o **PADRÃO OFICIAL CPL** descrito no topo desse arquivo. Resumo: formato **duas telas** (`layout: "split"`) — professora em cima com legenda branca centralizada **sem marca-texto**; embaixo, painel creme que **mescla cartões de insight, imagens e takes de vídeo** relacionados à fala; paleta bordô/marrom; Cormorant Garamond + Jost; visual clássico e clean, sem contornos fortes. Até **3 insights** por vídeo, cada um vira um Reels.
 
 ---
 

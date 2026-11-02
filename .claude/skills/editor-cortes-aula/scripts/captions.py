@@ -221,6 +221,94 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     return cues, total, srt_path
 
 
+CPL_STYLE = {"font": "Instrument Serif", "font_size": 96, "text_color": "#FFFFFF", "accent": "#E9CF96",
+             "caption_y": 600, "max_chars": 18, "max_words": 3,
+             "emph_font": "Instrument Serif", "emph_size": 140, "emph2_font": "Playfair Display",
+             "emph2_size": 196, "emph_y": 1180}
+
+
+def cpl_text(tw):
+    """Minúsculas no início de frase e sem pontuação (padrão das referências); siglas e nomes ficam."""
+    out, prev_end = [], True
+    for w in tw:
+        raw = w["word"]
+        core = re.sub(r"[.,;:!?…\"“”]+$", "", raw)
+        core = re.sub(r"^[\"“”(]+", "", core)
+        if prev_end and core[:1].isupper() and not core.isupper() and len(core) > 1:
+            core = core[0].lower() + core[1:]
+        elif prev_end and core in ("A", "O", "E", "É"):
+            core = core.lower()
+        prev_end = re.search(r"[.!?…]$", raw) is not None
+        if core:
+            out.append({**w, "word": core})
+    return out
+
+
+def build_cpl(edl, words, out_ass):
+    """Estilo CPL (referência da usuária): serifa fina branca, 2–3 palavras, acima da cabeça,
+    entrada suave; frases de destaque em composição branco + itálico dourado."""
+    st = {**CPL_STYLE, **(edl.get("style") or {})}
+    tw, total = timeline_words(edl, words)
+    tw = cpl_text(tw)
+    cues = []
+    for c in group_cues(tw, int(st["max_chars"]), max_dur=1.8, gap_break=0.22):
+        while len(c) > int(st["max_words"]):
+            cues.append(c[:int(st["max_words"])]); c = c[int(st["max_words"]):]
+        cues.append(c)
+    emph = edl.get("emphasis", [])
+    W, H = 1080, 1920
+    white, gold = ass_color(st["text_color"]), ass_color(st["accent"])
+    sh = ass_color("#000000", 0x70)
+    tr = ass_color("#000000", 0xFF)
+    header = f"""[Script Info]
+ScriptType: v4.00+
+PlayResX: {W}
+PlayResY: {H}
+WrapStyle: 2
+ScaledBorderAndShadow: yes
+YCbCr Matrix: TV.709
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Cap,{st['font']},{st['font_size']},{white},{tr},{sh},{tr},0,0,0,0,100,100,0,0,1,3,0,2,60,60,0,1
+Style: Emph1,{st['emph_font']},{st['emph_size']},{white},{tr},{sh},{tr},0,0,0,0,100,100,-1,0,1,3,0,2,40,40,0,1
+Style: Emph2,{st['emph2_font']},{st['emph2_size']},{gold},{tr},{ass_color('#000000', 0x80)},{tr},-1,-1,0,0,100,100,-2,0,1,3,0,2,40,40,0,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+    ev, srt = [], []
+    y = int(st["caption_y"])
+    for n, cue in enumerate(cues):
+        c0 = cue[0]["start"]
+        nxt = cues[n + 1][0]["start"] if n + 1 < len(cues) else total
+        c1 = min(nxt if nxt - cue[-1]["end"] < 0.35 else cue[-1]["end"] + 0.12, total)
+        mid = (c0 + c1) / 2
+        txt = " ".join(esc(w["word"]) for w in cue)
+        srt.append(f"{n + 1}\n{srt_time(c0)} --> {srt_time(c1)}\n{' '.join(w['word'] for w in cue)}\n")
+        if any(float(e["start"]) <= mid <= float(e["end"]) for e in emph):
+            continue  # durante o destaque, só a composição grande aparece
+        ev.append(f"Dialogue: 0,{ass_time(c0)},{ass_time(c1)},Cap,,0,0,0,,"
+                  f"{{\\an2\\move(540,{y + 16},540,{y},0,170)\\fad(110,70)\\blur6}}{txt}")
+    ey = int(st["emph_y"])
+    for e in emph:
+        s0, s1 = float(e["start"]), min(float(e["end"]), total)
+        l1, l2 = esc(e.get("line1", "")), esc(e.get("line2", ""))
+        if l1:
+            ev.append(f"Dialogue: 2,{ass_time(s0)},{ass_time(s1)},Emph1,,0,0,0,,"
+                      f"{{\\an2\\move(540,{ey - 150 + 18},540,{ey - 150},0,220)\\fad(150,150)\\blur6}}{l1}")
+        if l2:
+            ev.append(f"Dialogue: 3,{ass_time(s0 + 0.18)},{ass_time(s1)},Emph2,,0,0,0,,"
+                      f"{{\\an2\\pos(540,{ey + 20})\\fscx86\\fscy86\\t(0,260,\\fscx100\\fscy100)"
+                      f"\\fad(140,150)\\blur5}}{l2}")
+    with open(out_ass, "w", encoding="utf-8") as f:
+        f.write(header + "\n".join(ev) + "\n")
+    srt_path = os.path.splitext(out_ass)[0] + ".srt"
+    with open(srt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(srt))
+    return cues, total, srt_path
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("edl")
@@ -249,7 +337,10 @@ def main():
     if changed and a.save_fixes:
         save_json(tr, a.transcript)
 
-    cues, total, srt_path = build(edl, words, a.out)
+    if (edl.get("style") or {}).get("preset") == "cpl":
+        cues, total, srt_path = build_cpl(edl, words, a.out)
+    else:
+        cues, total, srt_path = build(edl, words, a.out)
     print(f"Legendas: {a.out} e {srt_path}  |  {len(cues)} blocos  |  duração do corte {total:.2f}s"
           + (f"  |  {changed} correções aplicadas" if changed else ""))
     long = [" ".join(w["word"] for w in c) for c in cues if len(" ".join(w["word"] for w in c)) > 30]

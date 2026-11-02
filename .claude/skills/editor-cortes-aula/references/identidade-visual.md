@@ -7,11 +7,11 @@ Aplicar a TODOS os cortes de lives e CPLs, salvo pedido diferente.
 - **Formato:** tela única (`layout: "crop"`), rosto centralizado e acompanhado (`facecenter.py --face-y 0.47`,
   deixa espaço acima da cabeça para a legenda). `base_zoom` ≈ 1.2.
 - **Legenda:** `style: {"preset": "cpl"}` → **Lora** branca (fonte escolhida pela usuária), 84 px, **minúsculas no início de frase,
-  sem pontuação**, 2–3 palavras por vez, **acima da cabeça** (base em y≈600), entrada suave subindo + fade,
+  sem pontuação**, 2–3 palavras por vez, **embaixo, na altura do peito** (`caption_y` ≈ 1520 — a usuária NÃO quer legenda na testa/acima da cabeça), entrada suave subindo + fade,
   sombra difusa (sem contorno duro, sem caixa, sem marca-texto).
 - **Destaques (`emphasis`):** 2–4 por corte, só nas frases mais fortes, com as palavras exatas da fala:
   linha 1 **Lora** branca (120 px) + linha 2 **Playfair Display Bold Italic dourada `#E9CF96`**
-  (até 196 px, ajusta à largura), **sobre o peito** (`emph_y` ≈ 1430 — nunca sobre boca/queixo), com escala suave. Durante o destaque a legenda comum some.
+  (até 196 px, ajusta à largura), **sobre o peito** (`emph_y` ≈ 1450 — nunca sobre boca/queixo; durante o destaque a legenda comum some), com escala suave. Durante o destaque a legenda comum some.
   Ex.: `{"start":0.1,"end":3.2,"line1":"você está","line2":"rasgando dinheiro"}` (tempos do vídeo final).
 - **Transições/sons:** punch-in sutil 1.0/1.07 entre blocos + whoosh discreto (−25 dB) + soft hit na abertura.
 - **Fonte de baixa resolução** (ex.: live 1080×720 com tarjas): recortar a área útil e aplicar

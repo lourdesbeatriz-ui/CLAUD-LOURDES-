@@ -222,9 +222,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
 CPL_STYLE = {"font": "Lora", "font_size": 84, "text_color": "#FFFFFF", "accent": "#E9CF96",
-             "caption_y": 600, "max_chars": 18, "max_words": 3,
+             "caption_y": 1520, "max_chars": 18, "max_words": 3,
              "emph_font": "Lora", "emph_size": 120, "emph2_font": "Playfair Display",
-             "emph2_size": 196, "emph_y": 1180}
+             "emph2_size": 196, "emph_y": 1450}
 
 
 def cpl_text(tw):

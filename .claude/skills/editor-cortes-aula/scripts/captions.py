@@ -221,9 +221,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     return cues, total, srt_path
 
 
-CPL_STYLE = {"font": "Instrument Serif", "font_size": 96, "text_color": "#FFFFFF", "accent": "#E9CF96",
+CPL_STYLE = {"font": "Lora", "font_size": 84, "text_color": "#FFFFFF", "accent": "#E9CF96",
              "caption_y": 600, "max_chars": 18, "max_words": 3,
-             "emph_font": "Instrument Serif", "emph_size": 140, "emph2_font": "Playfair Display",
+             "emph_font": "Lora", "emph_size": 120, "emph2_font": "Playfair Display",
              "emph2_size": 196, "emph_y": 1180}
 
 
@@ -333,7 +333,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     for e in emph:
         s0, s1 = float(e["start"]), min(float(e["end"]), total)
         l1, l2 = esc(e.get("line1", "")), esc(e.get("line2", ""))
-        f1 = fit(l1, "InstrumentSerif-Regular.ttf", int(st["emph_size"]))
+        f1 = fit(l1, "Lora-Regular.ttf", int(st["emph_size"]))
         f2 = fit(l2, "PlayfairDisplay-BoldItalic.ttf", int(st["emph2_size"]))
         if l1:
             ev.append(f"Dialogue: 2,{ass_time(s0)},{ass_time(s1)},Emph1,,0,0,0,,"

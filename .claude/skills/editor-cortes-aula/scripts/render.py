@@ -253,13 +253,14 @@ def sfx_events(edl, total):
 
 def build_graph(edl, info, src, subs, fps, W, H, with_video, loudnorm, tmpdir=None, base_dir="."):
     parts = parts_of(edl)
+    aidx = (info.get("audio") or {}).get("index", 0)
     VH = split_top(edl, H)
     inputs, fc = [], []
     for k, (s, e, zoom, pcx, pcy, ptr) in enumerate(parts):
         inputs += ["-ss", f"{s:.3f}", "-t", f"{e - s:.3f}", "-i", src]
         d = e - s
         fade = min(0.01, d / 4)
-        fc.append(f"[{k}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,"
+        fc.append(f"[{k}:a:{aidx}]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,"
                   f"asetpts=PTS-STARTPTS,afade=t=in:d={fade:.3f},afade=t=out:st={d - fade:.3f}:d={fade:.3f}[a{k}]")
         if with_video:
             fc.append(f"[{k}:v]setpts=PTS-STARTPTS,fps={fps},{hdr_to_sdr(info)}{geometry(edl, info, zoom, W, VH, pcx, pcy, ptr)},"
@@ -340,7 +341,7 @@ def make_proxy(edl, src, info, tmpdir, fps, W):
     for k, (s0, e0, zoom, pcx, pcy, ptr) in enumerate(parts):
         out = os.path.join(tmpdir, f"px{k:02d}.mkv")
         run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{s0:.3f}", "-t", f"{e0 - s0:.3f}",
-             "-i", src, "-map", "0:v:0", "-map", "0:a:0",
+             "-i", src, "-map", "0:v:0", "-map", f"0:a:{(info.get('audio') or {}).get('index', 0)}",
              "-vf", f"fps={fps},{hdr_to_sdr(info)}scale={pw}:{ph}:flags=lanczos,format=yuv420p",
              "-c:v", "libx264", "-preset", "veryfast", "-crf", "10", "-c:a", "pcm_s16le", "-ar", "48000", out])
         files.append(out)

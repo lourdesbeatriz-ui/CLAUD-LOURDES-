@@ -58,7 +58,10 @@ def probe(path):
                "-show_streams", path], capture=True).stdout
     data = json.loads(out)
     v = next((s for s in data["streams"] if s.get("codec_type") == "video"), None)
-    a = next((s for s in data["streams"] if s.get("codec_type") == "audio"), None)
+    auds = [s for s in data["streams"] if s.get("codec_type") == "audio"]
+    # iPhone grava também áudio espacial (APAC) que o ffmpeg não decodifica: usa a 1ª faixa legível
+    a_idx = next((i for i, s in enumerate(auds) if s.get("codec_name") not in (None, "unknown", "none")), 0)
+    a = auds[a_idx] if auds else None
     info = {"path": path, "duration": float(data["format"].get("duration", 0) or 0),
             "size_bytes": int(data["format"].get("size", 0) or 0), "video": None, "audio": None}
     if v:
@@ -84,7 +87,8 @@ def probe(path):
                          "hdr": v.get("color_transfer") in ("arib-std-b67", "smpte2084")}
     if a:
         info["audio"] = {"codec": a.get("codec_name"), "sample_rate": int(a.get("sample_rate", 0) or 0),
-                         "channels": a.get("channels"), "bit_rate": int(a.get("bit_rate", 0) or 0)}
+                         "channels": a.get("channels"), "bit_rate": int(a.get("bit_rate", 0) or 0),
+                         "index": a_idx}
     return info
 
 

@@ -81,6 +81,11 @@ def geometry(edl, info, zoom, W, H, cx=None, cy=None, track=None):
     if track and len(track) >= 2:
         # acompanhamento suave do rosto: x(t) linear por partes entre os pontos da trilha
         pts = [(t, int(min(max(v * sw - cw / 2, 0), sw - cw))) for t, v in track]
+        if len({x for _, x in pts}) == 1:  # sem folga para mover (recorte = largura toda)
+            return f"crop={cw}:{ch}:{pts[0][1]}:{y},scale={W}:{H}:flags=lanczos"
+        # o avaliador do ffmpeg não aceita aninhamento profundo: no máx. ~40 pontos por trecho
+        step = max(1, -(-len(pts) // 40))
+        pts = pts[::step] + ([pts[-1]] if (len(pts) - 1) % step else [])
         expr = str(pts[-1][1])
         for (t0, x0), (t1, x1) in reversed(list(zip(pts, pts[1:]))):
             expr = f"if(lt(t,{t1}),{x0}+({x1 - x0})*(t-{t0})/{max(t1 - t0, 0.001)},{expr})"

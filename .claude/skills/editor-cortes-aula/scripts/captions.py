@@ -317,11 +317,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         if any(float(e["start"]) <= mid <= float(e["end"]) for e in emph):
             continue  # durante o destaque, só a composição grande aparece
         # legenda que só encosta no destaque: recorta para não aparecer junto dele
+        clipped = False
         for e in emph:
             e0, e1 = float(e["start"]), float(e["end"])
             if c0 < e1 and c1 > e0:
                 c0, c1 = (e1, c1) if mid > e1 else (c0, e0)
-        if c1 - c0 < 0.35:
+                clipped = True
+        if clipped and c1 - c0 < 0.35:
             continue
         ev.append(f"Dialogue: 0,{ass_time(c0)},{ass_time(c1)},Cap,,0,0,0,,"
                   f"{{\\an2\\move(540,{y + 16},540,{y},0,170)\\fad(110,70)\\blur6}}{txt}")

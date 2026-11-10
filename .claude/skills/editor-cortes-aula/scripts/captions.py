@@ -286,7 +286,9 @@ def build_cpl(edl, words, out_ass):
     emph = edl.get("emphasis", [])
     W, H = 1080, 1920
     white, gold = ass_color(st["text_color"]), ass_color(st["accent"])
-    sh = ass_color("#000000", 0x70)
+    # halo escuro suave atrás do texto; em roupa/fundo claro use style.halo_alpha menor (mais escuro)
+    sh = ass_color("#000000", int(st.get("halo_alpha", 0x70)))
+    hb = int(st.get("halo", 3))
     tr = ass_color("#000000", 0xFF)
     header = f"""[Script Info]
 ScriptType: v4.00+
@@ -298,8 +300,8 @@ YCbCr Matrix: TV.709
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Cap,{st['font']},{st['font_size']},{white},{tr},{sh},{tr},0,0,0,0,100,100,0,0,1,3,0,2,60,60,0,1
-Style: Emph1,{st['emph_font']},{st['emph_size']},{white},{tr},{sh},{tr},0,0,0,0,100,100,-1,0,1,3,0,2,40,40,0,1
+Style: Cap,{st['font']},{st['font_size']},{white},{tr},{sh},{tr},0,0,0,0,100,100,0,0,1,{hb},0,2,60,60,0,1
+Style: Emph1,{st['emph_font']},{st['emph_size']},{white},{tr},{sh},{tr},0,0,0,0,100,100,-1,0,1,{hb},0,2,40,40,0,1
 Style: Emph2,{st['emph2_font']},{st['emph2_size']},{gold},{tr},{ass_color('#000000', 0x80)},{tr},-1,-1,0,0,100,100,-2,0,1,3,0,2,40,40,0,1
 
 [Events]

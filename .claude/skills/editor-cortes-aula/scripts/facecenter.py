@@ -111,15 +111,19 @@ def main():
         if not p.pop("_found", False) and ok:
             j = min(ok, key=lambda m: abs(m - k))
             p["crop_x"], p["crop_y"] = allp[j]["crop_x"], allp[j]["crop_y"]
-    # trecho com enquadramento muito fora da mediana (mão/objeto detectado como rosto) volta à mediana
-    if len(allp) >= 3:
-        mx = float(np.median([p["crop_x"] for p in allp]))
-        my = float(np.median([p["crop_y"] for p in allp]))
-        for p in allp:
-            if abs(p["crop_y"] - my) > 0.05 or abs(p["crop_x"] - mx) > 0.15:
-                print(f"  ajuste: {p['start']:.2f} fora da mediana → ({mx:.3f}, {my:.3f})")
-                p["crop_x"], p["crop_y"] = round(mx, 4), round(my, 4)
-                p.pop("track", None)
+    # trecho com enquadramento muito fora dos vizinhos (mão/objeto detectado como rosto) volta à mediana
+    # local — local, porque a câmera pode ter sido reposicionada ao longo da gravação
+    srt = sorted(allp, key=lambda p: p["start"])
+    base = [(p["crop_x"], p["crop_y"]) for p in srt]
+    for k, p in enumerate(srt):
+        nb = [base[j] for j in range(max(0, k - 3), min(len(srt), k + 4)) if j != k]
+        if len(nb) < 2:
+            continue
+        mx, my = float(np.median([x for x, _ in nb])), float(np.median([y for _, y in nb]))
+        if abs(base[k][1] - my) > 0.05 or abs(base[k][0] - mx) > 0.15:
+            print(f"  ajuste: {p['start']:.2f} fora dos vizinhos → ({mx:.3f}, {my:.3f})")
+            p["crop_x"], p["crop_y"] = round(mx, 4), round(my, 4)
+            p.pop("track", None)
     save_json(edl, a.edl)
     print(f"EDL atualizado: {a.edl}")
 

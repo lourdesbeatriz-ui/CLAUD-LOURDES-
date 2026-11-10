@@ -114,12 +114,23 @@ def tighten(edl, words, max_pause, pad, remove_fillers):
     return out_segments, report
 
 
+_AIDX = {}
+
+
+def _amap(src):
+    """-map da faixa de áudio legível (iPhone grava também APAC, que o ffmpeg não decodifica)."""
+    if src not in _AIDX:
+        from common import probe
+        _AIDX[src] = (probe(src).get("audio") or {}).get("index", 0)
+    return ["-map", f"0:a:{_AIDX[src]}"]
+
+
 def snap_to_breath(src, t, back=0.45, fwd=0.05):
     """Ajusta um ponto de corte para o instante de menor energia (respiro) logo antes de t.
     Os tempos por palavra da transcrição são estimados; sem isso a 1ª sílaba pode ser cortada."""
     import numpy as np
     a = max(0.0, t - back)
-    raw = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{a:.3f}", "-t", f"{back + fwd:.3f}", "-i", src,
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{a:.3f}", "-t", f"{back + fwd:.3f}", "-i", src, *_amap(src),
                           "-vn", "-ac", "1", "-ar", "16000", "-f", "f32le", "-"], stdout=subprocess.PIPE).stdout
     x = np.frombuffer(raw, np.float32)
     hop = 160
@@ -129,6 +140,28 @@ def snap_to_breath(src, t, back=0.45, fwd=0.05):
     r = np.sqrt((x[:n * hop].reshape(n, hop) ** 2).mean(1) + 1e-12)
     r = np.convolve(r, np.ones(3) / 3, mode="same")
     return round(a + int(np.argmin(r)) * hop / 16000, 3)
+
+
+def snap_end(src, t, hi, fwd=0.5):
+    """Estende o fim do trecho até a voz realmente acabar (cauda da última sílaba), sem passar de hi."""
+    import numpy as np
+    b = min(t + fwd, hi - 0.03)
+    a = t - 0.05
+    if b - a < 0.08:
+        return t
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{a:.3f}", "-t", f"{b - a:.3f}", "-i", src, *_amap(src),
+                          "-vn", "-ac", "1", "-ar", "16000", "-f", "f32le", "-"], stdout=subprocess.PIPE).stdout
+    x = np.frombuffer(raw, np.float32)
+    hop = 160
+    n = len(x) // hop
+    if n < 5:
+        return t
+    r = np.convolve(np.sqrt((x[:n * hop].reshape(n, hop) ** 2).mean(1) + 1e-12), np.ones(3) / 3, mode="same")
+    thr = r.min() + 0.12 * (r.max() - r.min())
+    k0 = int(np.argmax(r[:max(1, n // 2)]))
+    after = np.flatnonzero(r[k0:] < thr)
+    k = k0 + (int(after[0]) if len(after) else n - 1 - k0)
+    return round(min(a + k * hop / 16000 + 0.06, hi - 0.02), 3)
 
 
 def main():
@@ -165,7 +198,14 @@ def main():
                     gap = w0["start"] - words[i0 - 1]["end"] if i0 > 0 else 0.45
                     back = min(0.45, max(0.10, gap + 0.06))
                     p["start"] = min(p["start"], snap_to_breath(src, w0["start"], back=back))
-            sg["start"] = sg["parts"][0]["start"]
+                    # fim: espera a última palavra terminar de verdade (não corta o final da fala)
+                    il = p["words"][-1]
+                    hi = words[il + 1]["start"] if il + 1 < len(words) else words[il]["end"] + 0.6
+                    p["end"] = max(p["end"], snap_end(src, words[il]["end"], hi))
+            for a_, b_ in zip(sg["parts"], sg["parts"][1:]):  # trechos vizinhos não se sobrepõem
+                if b_["start"] < a_["end"]:
+                    a_["end"] = b_["start"]
+            sg["start"], sg["end"] = sg["parts"][0]["start"], sg["parts"][-1]["end"]
     except SystemExit:
         print("AVISO: fonte não encontrada — inícios não ajustados ao áudio.")
     out = dict(edl)

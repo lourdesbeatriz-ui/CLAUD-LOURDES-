@@ -61,8 +61,8 @@ def transcribe_media(path, model_name, lang, device, initial_prompt):
 def transcribe_sherpa(path, model_dir, vad_path, lang, threads=4):
     """Alternativa sem Hugging Face: Whisper (ONNX, sherpa-onnx) + VAD Silero, ambos baixáveis do GitHub
     (github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models). O Whisper ONNX não dá tempo por palavra,
-    então cada trecho de fala detectado pelo VAD (curto, ~1–6 s) tem suas palavras distribuídas
-    proporcionalmente ao tamanho, apenas sobre os quadros com voz (energia) — erro típico < 150 ms."""
+    então cada trecho de fala detectado pelo VAD (curto, ~1–6 s) tem suas palavras ancoradas nos
+    núcleos silábicos do áudio (align.py); sem picos suficientes, rateio pela energia."""
     import glob
     import subprocess
     import numpy as np
@@ -128,22 +128,10 @@ def transcribe_sherpa(path, model_dir, vad_path, lang, threads=4):
         if not toks:
             continue
         t0 = start / sr
-        n = len(samples) // hop
-        rms = np.sqrt(np.mean(samples[:n * hop].reshape(n, hop) ** 2, axis=1) + 1e-12) if n else np.array([1.0])
-        thr = max(np.percentile(rms, 30) * 1.2, 1e-4)
-        voiced = (rms > thr).astype(float)
-        if voiced.sum() < 3:
-            voiced[:] = 1
-        cum = np.concatenate([[0], np.cumsum(voiced)]) / voiced.sum()
-        weights = np.array([len(x) + 1 for x in toks], dtype=float)
-        fr = np.concatenate([[0], np.cumsum(weights)]) / weights.sum()
-        def at(f):  # fração de "fala" -> tempo
-            k = int(np.searchsorted(cum, f, side="left"))
-            return t0 + min(k, n) * hop / sr
+        from align import align_chunk  # tempos ancorados nos núcleos silábicos do áudio
         w0 = len(words)
-        for j, x in enumerate(toks):
-            s, e = at(fr[j] + 1e-6), at(fr[j + 1])
-            words.append({"word": x, "start": round(s, 3), "end": round(max(e, s + 0.08), 3), "prob": 0.8})
+        for x, (s, e) in zip(toks, align_chunk(samples, t0, toks)):
+            words.append({"word": x, "start": s, "end": e, "prob": 0.8})
         segs.append({"start": round(t0, 3), "end": round(t0 + len(samples) / sr, 3), "text": text,
                      "w0": w0, "w1": len(words) - 1})
         print(f"[{tc(t0)}] {text}", file=sys.stderr)

@@ -36,6 +36,8 @@ def main():
     ap.add_argument("--head-shift", type=float, default=0.2,
                     help="desloca o centro p/ a nuca, em frações da largura do rosto (+ = esquerda). "
                          "Use negativo se a pessoa olhar para a esquerda do quadro.")
+    ap.add_argument("--min-face", type=float, default=6,
+                    help="rosto mínimo = largura/N (6 = close; use 12–16 em plano aberto)")
     ap.add_argument("--static", action="store_true", help="sem acompanhamento: um centro fixo por trecho")
     a = ap.parse_args()
     try:
@@ -59,13 +61,14 @@ def main():
         for p in seg.get("parts", []):
             imgs, w, h = frames(src, p["start"], p["end"], a.step)
             xs, ys, track_x = [], [], []
+            mf = int(w / a.min_face)
             for g in imgs:
-                found = list(front.detectMultiScale(g, 1.1, 5, minSize=(w // 6, w // 6)))
+                found = list(front.detectMultiScale(g, 1.1, 5, minSize=(mf, mf)))
                 if not found:
-                    found = list(prof.detectMultiScale(g, 1.1, 4, minSize=(w // 6, w // 6)))
+                    found = list(prof.detectMultiScale(g, 1.1, 4, minSize=(mf, mf)))
                     if not found:
                         found = [(w - x - fw, y, fw, fh) for x, y, fw, fh in
-                                 prof.detectMultiScale(cv2.flip(g, 1), 1.1, 4, minSize=(w // 6, w // 6))]
+                                 prof.detectMultiScale(cv2.flip(g, 1), 1.1, 4, minSize=(mf, mf))]
                 # descarta falsos positivos (mãos, objetos): rosto tem tamanho mínimo e fica na metade de cima
                 found = [r for r in found if r[1] + r[3] / 2 < 0.7 * h]
                 if found:

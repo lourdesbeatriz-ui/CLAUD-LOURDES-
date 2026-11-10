@@ -111,6 +111,15 @@ def main():
         if not p.pop("_found", False) and ok:
             j = min(ok, key=lambda m: abs(m - k))
             p["crop_x"], p["crop_y"] = allp[j]["crop_x"], allp[j]["crop_y"]
+    # trecho com enquadramento muito fora da mediana (mão/objeto detectado como rosto) volta à mediana
+    if len(allp) >= 3:
+        mx = float(np.median([p["crop_x"] for p in allp]))
+        my = float(np.median([p["crop_y"] for p in allp]))
+        for p in allp:
+            if abs(p["crop_y"] - my) > 0.05 or abs(p["crop_x"] - mx) > 0.15:
+                print(f"  ajuste: {p['start']:.2f} fora da mediana → ({mx:.3f}, {my:.3f})")
+                p["crop_x"], p["crop_y"] = round(mx, 4), round(my, 4)
+                p.pop("track", None)
     save_json(edl, a.edl)
     print(f"EDL atualizado: {a.edl}")
 

@@ -42,7 +42,7 @@ def parts_of(edl):
     for seg in edl["segments"]:
         for p in seg.get("parts") or [{"start": seg["start"], "end": seg["end"]}]:
             if p["end"] - p["start"] > 0.02:
-                out.append((p["start"], p["end"], float(seg.get("zoom", 1.0)),
+                out.append((p["start"], p["end"], float(p.get("zoom", seg.get("zoom", 1.0))),
                             p.get("crop_x", seg.get("crop_x")), p.get("crop_y", seg.get("crop_y")),
                             p.get("track")))
     if not out:

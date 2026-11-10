@@ -54,7 +54,8 @@ def geometry(edl, info, zoom, W, H, cx=None, cy=None, track=None):
     """Filtro de enquadramento de um trecho -> WxH."""
     sw, sh = info["video"]["width"], info["video"]["height"]
     # base_zoom: aproximação fixa para centralizar o rosto (fonte 4K permite sem perder nitidez)
-    zoom = min(max(zoom * float(edl.get("base_zoom", 1.0)), 1.0), 1.5)  # zoom<1 no trecho = abrir o plano
+    # zoom<1 no trecho = abrir o plano; teto padrão 1.5 (plano aberto em 4K: suba "max_zoom" no EDL)
+    zoom = min(max(zoom * float(edl.get("base_zoom", 1.0)), 1.0), float(edl.get("max_zoom", 1.5)))
     layout = edl.get("layout", "crop")
     cx = float(cx if cx is not None else edl.get("crop_x", 0.5))
     cy = float(cy if cy is not None else edl.get("crop_y", 0.5))
@@ -339,7 +340,8 @@ def make_proxy(edl, src, info, tmpdir, fps, W):
     parts = parts_of(edl)
     v = info["video"]
     # intermediário com folga de resolução (1,5×) para permitir aproximação/centralização sem perda
-    base = min(v["width"], int(W * 1.5)) if v["width"] <= v["height"] else int(W * v["width"] / v["height"])
+    zk = max(1.0, min(float(edl.get("base_zoom", 1.0)), float(edl.get("max_zoom", 1.5))) / 1.5)
+    base = min(v["width"], int(W * 1.5 * zk)) if v["width"] <= v["height"] else int(W * v["width"] / v["height"])
     pw = int(base) // 2 * 2
     ph = int(pw * v["height"] / v["width"]) // 2 * 2
     files, new_parts, off = [], [], 0.0

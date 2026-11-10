@@ -38,6 +38,7 @@ def main():
                          "Use negativo se a pessoa olhar para a esquerda do quadro.")
     ap.add_argument("--min-face", type=float, default=6,
                     help="rosto mínimo = largura/N (6 = close; use 12–16 em plano aberto)")
+    ap.add_argument("--scan-width", type=int, default=540, help="largura da análise (1080 p/ rosto pequeno)")
     ap.add_argument("--static", action="store_true", help="sem acompanhamento: um centro fixo por trecho")
     a = ap.parse_args()
     try:
@@ -59,7 +60,7 @@ def main():
     last = (float(edl.get("crop_x", 0.5)), float(edl.get("crop_y", 0.5)))
     for seg in edl["segments"]:
         for p in seg.get("parts", []):
-            imgs, w, h = frames(src, p["start"], p["end"], a.step)
+            imgs, w, h = frames(src, p["start"], p["end"], a.step, a.scan_width)
             xs, ys, track_x = [], [], []
             mf = int(w / a.min_face)
             for g in imgs:
@@ -94,6 +95,7 @@ def main():
                 p["track"] = [[round(i * a.step, 3), round(float(v), 4)] for i, v in enumerate(sm)]
             else:
                 p.pop("track", None)
+            p["_found"] = bool(xs)
             if xs:
                 fx, fy = float(np.median(xs)), float(np.median(ys))
                 cx = fx
@@ -102,6 +104,13 @@ def main():
             p["crop_x"], p["crop_y"] = last
             print(f"{p['start']:8.2f}-{p['end']:8.2f}  rosto detectado em {len(xs)}/{len(imgs)} quadros  "
                   f"→ crop_x={last[0]:.3f} crop_y={last[1]:.3f}")
+    # trecho sem rosto detectado herda o enquadramento do trecho detectado mais próximo
+    allp = [p for seg in edl["segments"] for p in seg.get("parts", [])]
+    ok = [k for k, p in enumerate(allp) if p.get("_found")]
+    for k, p in enumerate(allp):
+        if not p.pop("_found", False) and ok:
+            j = min(ok, key=lambda m: abs(m - k))
+            p["crop_x"], p["crop_y"] = allp[j]["crop_x"], allp[j]["crop_y"]
     save_json(edl, a.edl)
     print(f"EDL atualizado: {a.edl}")
 

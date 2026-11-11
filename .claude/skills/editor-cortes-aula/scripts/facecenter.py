@@ -38,6 +38,8 @@ def main():
                          "Use negativo se a pessoa olhar para a esquerda do quadro.")
     ap.add_argument("--min-face", type=float, default=6,
                     help="rosto mínimo = largura/N (6 = close; use 12–16 em plano aberto)")
+    ap.add_argument("--pick", choices=["largest", "top"], default="largest",
+                    help="com mais de um rosto: o maior (padrão) ou o mais alto (quem está em pé)")
     ap.add_argument("--scan-width", type=int, default=540, help="largura da análise (1080 p/ rosto pequeno)")
     ap.add_argument("--static", action="store_true", help="sem acompanhamento: um centro fixo por trecho")
     a = ap.parse_args()
@@ -73,7 +75,8 @@ def main():
                 # descarta falsos positivos (mãos, objetos): rosto tem tamanho mínimo e fica na metade de cima
                 found = [r for r in found if r[1] + r[3] / 2 < 0.7 * h]
                 if found:
-                    x, y, fw, fh = max(found, key=lambda r: r[2] * r[3])
+                    pick = (lambda r: -(r[1] + r[3] / 2)) if a.pick == "top" else (lambda r: r[2] * r[3])
+                    x, y, fw, fh = max(found, key=pick)
                     hx = (x + fw / 2 - a.head_shift * fw) / w  # centro da cabeça (inclui cabelo/nuca)
                     xs.append(hx)
                     ys.append((y + fh / 2) / h)
